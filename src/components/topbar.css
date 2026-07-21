@@ -1,0 +1,95 @@
+.top{
+  display: flex;
+  width: 88%;
+  flex-direction: row;
+  background-color: #161722;
+  border-radius: 10px;
+  border: 1px solid #2a2c3f;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  padding: 16px;
+  margin-left: 16px;
+  margin-top: 16px;
+  margin-right: 16px;
+  align-self: center;
+  justify-content: center;
+  align-items: center;
+}
+
+.top2{
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  flex : 3;
+}
+
+.copyIp {
+  flex : 2;
+  padding: 8px 16px;
+  height: 46px;
+  border: 1px solid #161722;
+  border-radius: 8px;
+  background-color: #1e1f2f;
+  color: #c7d2fe;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-color: #2a2c3f;
+  margin-left: 10px;
+  margin-bottom: 5px;
+  width: 350px;
+}
+
+
+.copyIp:hover {
+  background-color: #4f46e5;
+  color: #ffffff;
+}
+
+
+.room-id{
+
+  padding: 8px 16px;
+  height: 26px;
+  border: 1px solid #161722;
+  border-radius: 8px;
+  background-color: #1e1f2f;
+  color: #c7d2fe;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-color: #2a2c3f;
+  margin-right: 10px;
+  margin-bottom: 5px;
+  width: 250px;
+  justify-content: center;
+}
+
+
+.joinBtn{
+
+
+  padding: 8px 16px;
+  height: 46px;
+  border: 1px solid #161722;
+  border-radius: 8px;
+  background-color: #1e1f2f;
+  color: #c7d2fe;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-color: #2a2c3f;
+  margin-right: 1px;
+  margin-bottom: 5px;
+  width: 80px;
+  justify-content: center;
+}
+
+@media screen and (max-width: 1000px) {
+  
+.top{
+  display: flex;
+  flex-direction: column;
+}
+
+  
+}

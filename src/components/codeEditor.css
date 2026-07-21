@@ -1,0 +1,23 @@
+.editorPanel{
+
+  background-color: #0f101a;
+  width: 100%;
+}
+
+.theme{
+    
+  border-radius: 12px;
+  padding: 14px;
+  background-color: #0f101a;
+  border: 1px solid #2a2c3f;
+  
+}
+
+
+@media screen and (max-width: 768px) {
+
+.editorPanel{
+  width: 80%;
+}
+
+}
