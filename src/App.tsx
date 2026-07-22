@@ -4,6 +4,7 @@ import { MainUI } from './components/main_ui'
 import { TopBar } from './components/topbar'
 import { executeCode } from './api/codeRunner'
 import { joinRoom , listenToTextChanges} from './services/roomServices'
+import { Intro } from './components/introduction'
 
 function App() {
   
@@ -24,6 +25,17 @@ int main() {
 
   const[roomId, setRoomId] = useState('MAHBUB');
 
+
+  useEffect(() =>{
+
+    fetch('https://api.ipify.org?format=json')
+      .then((response) => response.json())
+      .then((data) => setRoomId((data.ip).replaceAll('.','')))
+      .catch((error) => {
+        console.error('Error fetching IP:', error);
+        setRoomId('UNKNOWN');
+      });
+  }, []); 
 
 
 useEffect(() => {
@@ -111,6 +123,8 @@ useEffect(() => {
   <TopBar setRoom={setRoom}/>
 
    <MainUI  onClick={compileClick} onClickCpp={Cpp} onClickJava={Java} onClickPython={Python} code={code} lang = {langg} setCode={setCode} roomId={roomId}/>
+
+   <Intro/>
    </>
   )
 }
