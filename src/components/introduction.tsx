@@ -1,4 +1,3 @@
-import React from "react";
 import "../components/intro.css";
 
 export const Intro = () => {
