@@ -15,33 +15,33 @@ type Props = {
 export function CodeEditor({ lang, code, setCode, roomId }: Props) {
   const [theme, setTheme] = useState<string>('vs-dark');
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
-  const isUpdatingFromRemote = useRef<boolean>(false);
+  const isSelfTyping = useRef<boolean>(false);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleEditorMount: OnMount = (editorInstance) => {
     editorRef.current = editorInstance;
   };
 
-  // Cursor focus loss prevention on remote change
+  // Remote Firebase push update handler
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
+
+    // Direct skip if the change originated from local active typing
+    if (isSelfTyping.current) return;
 
     const currentModel = editor.getModel();
     if (!currentModel) return;
 
     const currentContent = currentModel.getValue();
 
-    // Only sync if remote content is actually different
+    // Perform non-destructive text replacement only if content differs
     if (code !== currentContent) {
-      isUpdatingFromRemote.current = true;
-
-      // Preserve cursor position & selection before remote code update
-      const selection = editor.getSelection();
-      const position = editor.getPosition();
+      const selections = editor.getSelections();
       const hasFocus = editor.hasTextFocus();
 
-      // Execute edits smoothly without triggering full value re-render focus loss
-      editor.executeEdits('remote-sync', [
+      // Apply Monaco delta changes safely
+      editor.executeEdits('remote-sync-system', [
         {
           range: currentModel.getFullModelRange(),
           text: code,
@@ -49,22 +49,41 @@ export function CodeEditor({ lang, code, setCode, roomId }: Props) {
         },
       ]);
 
-      // Restore position & selection
-      if (position) {
-        editor.setPosition(position);
-      }
-      if (selection) {
-        editor.setSelection(selection);
+      // Preserve active line selections
+      if (selections && selections.length > 0) {
+        editor.setSelections(selections);
       }
 
-      // Re-focus if user was typing actively
-      if (hasFocus) {
+      // Re-claim focus silently if editor was active
+      if (hasFocus && !editor.hasTextFocus()) {
         editor.focus();
       }
-
-      isUpdatingFromRemote.current = false;
     }
   }, [code]);
+
+  const handleEditorChange = (value: string | undefined) => {
+    const newCode = value || '';
+    setCode(newCode);
+
+    const editor = editorRef.current;
+    if (editor && editor.hasTextFocus()) {
+      isSelfTyping.current = true;
+
+      // Debounce server upload to avoid micro-lag cursor conflicts
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+      }
+
+      debounceTimer.current = setTimeout(() => {
+        uploadTextOnChange(roomId, newCode).finally(() => {
+          // Release self typing lock after sync payload settles
+          setTimeout(() => {
+            isSelfTyping.current = false;
+          }, 150);
+        });
+      }, 200);
+    }
+  };
 
   return (
     <div style={{ padding: '10px' }}>
@@ -88,17 +107,7 @@ export function CodeEditor({ lang, code, setCode, roomId }: Props) {
         theme={theme}
         value={code}
         onMount={handleEditorMount}
-        onChange={(value) => {
-          // Ignore triggering change upload when content was pushed from remote
-          if (isUpdatingFromRemote.current) return;
-
-          const newCode = value || '';
-          setCode(newCode);
-
-          if (editorRef.current && editorRef.current.hasTextFocus()) {
-            uploadTextOnChange(roomId, newCode);
-          }
-        }}
+        onChange={handleEditorChange}
         options={{
           fontSize: 14,
           minimap: { enabled: false },
