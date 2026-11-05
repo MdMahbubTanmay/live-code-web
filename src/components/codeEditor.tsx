@@ -23,12 +23,12 @@ export function CodeEditor({ lang, code, setCode, roomId }: Props) {
     editorRef.current = editorInstance;
   };
 
-  // Safe Remote Sync using pushEditOperations for precise delta preservation
+  // Fixed Remote Sync with Strict Line-Number & Column Restoration
   useEffect(() => {
     const currentEditor = editorRef.current;
     if (!currentEditor) return;
 
-    // Local typing actove thakle incoming remote event suppress
+    // Skip if current device user is typing locally
     if (isLocalTyping.current) return;
 
     const currentModel = currentEditor.getModel();
@@ -39,12 +39,12 @@ export function CodeEditor({ lang, code, setCode, roomId }: Props) {
     if (code !== currentContent) {
       isRemoteUpdating.current = true;
 
-      // 1. Exact Cursor Position + Selection Range capture
-      const currentSelection = currentEditor.getSelection();
+      // 1. Capture exact Line Number & Column position before applying edit
       const currentPosition = currentEditor.getPosition();
+      const currentSelection = currentEditor.getSelection();
       const hasFocus = currentEditor.hasTextFocus();
 
-      // 2. Push Line-by-Line Delta Edits without wiping cursor stack
+      // 2. Non-destructive Edit Operations
       currentEditor.pushUndoStop();
       currentModel.pushEditOperations(
         [],
@@ -58,13 +58,27 @@ export function CodeEditor({ lang, code, setCode, roomId }: Props) {
       );
       currentEditor.pushUndoStop();
 
-      // 3. Force restore exact local line position & column index
+      // 3. Prevent Cursor Jumping to Last Line: Force Restore Exact Line & Column
       if (currentPosition) {
-        currentEditor.setPosition(currentPosition);
+        // Validate if line position still exists in new model line count
+        const totalLines = currentModel.getLineCount();
+        const safeLineNumber = Math.min(currentPosition.lineNumber, totalLines);
+        const maxCol = currentModel.getLineMaxColumn(safeLineNumber);
+        const safeColumn = Math.min(currentPosition.column, maxCol);
+
+        currentEditor.setPosition({
+          lineNumber: safeLineNumber,
+          column: safeColumn,
+        });
       }
 
-      if (currentSelection) {
-        currentEditor.setSelection(currentSelection);
+      if (currentSelection && currentPosition) {
+        currentEditor.setSelection({
+          startLineNumber: Math.min(currentSelection.startLineNumber, currentModel.getLineCount()),
+          startColumn: currentSelection.startColumn,
+          endLineNumber: Math.min(currentSelection.endLineNumber, currentModel.getLineCount()),
+          endColumn: currentSelection.endColumn,
+        });
       }
 
       if (hasFocus) {
