@@ -2,10 +2,8 @@
 import { useState, useRef, useEffect } from 'react';
 import Editor, { type OnMount } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
-import * as Y from 'yjs';
-import { MonacoBinding } from 'y-monaco';
-import { WebrtcProvider } from 'y-webrtc';
 import '../components/codeEditor.css';
+import { uploadTextOnChange } from '../services/roomServices';
 
 type Props = {
   lang: string;
@@ -14,47 +12,80 @@ type Props = {
   roomId: string;
 };
 
-export function CodeEditor({ lang, setCode, roomId }: Props) {
+export function CodeEditor({ lang, code, setCode, roomId }: Props) {
   const [theme, setTheme] = useState<string>('vs-dark');
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  
+  // Flags to prevent infinite state update loops
+  const isRemoteUpdating = useRef<boolean>(false);
+  const isLocalTyping = useRef<boolean>(false);
 
   const handleEditorMount: OnMount = (editorInstance) => {
     editorRef.current = editorInstance;
   };
 
+  // 1. Handle Remote Code Changes without Losing Cursor Focus
   useEffect(() => {
     const currentEditor = editorRef.current;
-    if (!currentEditor || !roomId) return;
+    if (!currentEditor) return;
 
-    // 1. Yjs Shared Document Instance Setup
-    const ydoc = new Y.Doc();
+    // If local user is actively typing, skip incoming sync to avoid cursor jumping
+    if (isLocalTyping.current) return;
 
-    // 2. Room-based Peer-to-Peer Realtime WebRTC Provider Sync Engine
-    const provider = new WebrtcProvider(`live-code-room-${roomId}`, ydoc);
-    const yText = ydoc.getText('monaco');
+    const currentModel = currentEditor.getModel();
+    if (!currentModel) return;
 
-    const model = currentEditor.getModel();
-    if (!model) return;
+    const currentContent = currentModel.getValue();
 
-    // 3. Bind Monaco Editor Model with Yjs Shared Text State
-    const binding = new MonacoBinding(
-      yText,
-      model,
-      new Set([currentEditor]),
-      provider.awareness
-    );
+    // Only apply update if Firebase code is strictly different from editor code
+    if (code !== currentContent) {
+      isRemoteUpdating.current = true;
 
-    // Track text changes to keep parent state updated
-    yText.observe(() => {
-      setCode(yText.toString());
-    });
+      const selections = currentEditor.getSelections();
+      const hasFocus = currentEditor.hasTextFocus();
 
-    return () => {
-      binding.destroy();
-      provider.destroy();
-      ydoc.destroy();
-    };
-  }, [roomId]);
+      // Non-destructive edit execution
+      currentEditor.executeEdits('remote-firebase-sync', [
+        {
+          range: currentModel.getFullModelRange(),
+          text: code,
+          forceMoveMarkers: true,
+        },
+      ]);
+
+      // Restore Cursor Selections
+      if (selections) {
+        currentEditor.setSelections(selections);
+      }
+
+      // Restore Focus if active
+      if (hasFocus) {
+        currentEditor.focus();
+      }
+
+      isRemoteUpdating.current = false;
+    }
+  }, [code]);
+
+  // 2. Handle Local Typing
+  const handleContentChange = (value: string | undefined) => {
+    // Ignore changes triggered by remote code injection
+    if (isRemoteUpdating.current) return;
+
+    const newCode = value || '';
+    setCode(newCode);
+
+    if (editorRef.current && editorRef.current.hasTextFocus()) {
+      isLocalTyping.current = true;
+
+      uploadTextOnChange(roomId, newCode).finally(() => {
+        // Release local typing flag after upload completes
+        setTimeout(() => {
+          isLocalTyping.current = false;
+        }, 100);
+      });
+    }
+  };
 
   return (
     <div style={{ padding: '10px' }}>
@@ -76,7 +107,9 @@ export function CodeEditor({ lang, setCode, roomId }: Props) {
         className="editorPanel"
         defaultLanguage="cpp"
         theme={theme}
+        value={code}
         onMount={handleEditorMount}
+        onChange={handleContentChange}
         options={{
           fontSize: 14,
           minimap: { enabled: false },
