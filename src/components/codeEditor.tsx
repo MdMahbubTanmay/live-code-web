@@ -21,7 +21,7 @@ export function CodeEditor({ lang, code, setCode, roomId }: Props) {
     editorRef.current = editorInstance;
   };
 
-  // Remote Firebase Change Handler with Exact Selection Preservation
+  // Safe Remote Sync: Maintains Cursor Position on Active Lines
   useEffect(() => {
     const currentEditor = editorRef.current;
     if (!currentEditor) return;
@@ -31,16 +31,16 @@ export function CodeEditor({ lang, code, setCode, roomId }: Props) {
 
     const currentContent = currentModel.getValue();
 
-    // Only apply remote edit if content actually changed
-    if (code !== currentContent && !currentEditor.hasTextFocus()) {
+    // Sync only if remote text differs
+    if (code !== currentContent) {
       isUpdatingFromRemote.current = true;
 
-      // Save exact cursor position before edit
+      // 1. Capture exact cursor position & selections before edit
       const position = currentEditor.getPosition();
       const selection = currentEditor.getSelection();
 
-      // Delta Edit execution
-      currentEditor.executeEdits('remote-sync', [
+      // 2. Perform delta replacement without full buffer destruction
+      currentEditor.executeEdits('remote-firebase-sync', [
         {
           range: currentModel.getFullModelRange(),
           text: code,
@@ -48,11 +48,17 @@ export function CodeEditor({ lang, code, setCode, roomId }: Props) {
         },
       ]);
 
-      // Restore exact position & selection so it doesn't jump to last line
+      // 3. Restore exact position & selection so cursor stays on active line
       if (position) {
-        currentEditor.setPosition(position);
+        const lineCount = currentModel.getLineCount();
+        const safeLine = Math.min(position.lineNumber, lineCount);
+        const maxCol = currentModel.getLineMaxColumn(safeLine);
+        const safeCol = Math.min(position.column, maxCol);
+
+        currentEditor.setPosition({ lineNumber: safeLine, column: safeCol });
       }
-      if (selection) {
+
+      if (selection && position) {
         currentEditor.setSelection(selection);
       }
 
@@ -91,7 +97,7 @@ export function CodeEditor({ lang, code, setCode, roomId }: Props) {
         className="editorPanel"
         defaultLanguage="cpp"
         theme={theme}
-        defaultValue={code} // Uncontrolled mode to prevent automatic re-renders
+        value={code}
         onMount={handleEditorMount}
         onChange={handleContentChange}
         options={{
