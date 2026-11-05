@@ -1,23 +1,19 @@
-.editorPanel{
-
+/* src/components/codeEditor.css */
+.editorPanel {
   background-color: #0f101a;
   width: 100%;
 }
 
-.theme{
-    
+.theme {
   border-radius: 12px;
-  padding: 14px;
+  padding: 8px 14px;
   background-color: #0f101a;
   border: 1px solid #2a2c3f;
-  
+  color: #cdd6f4;
 }
-
 
 @media screen and (max-width: 768px) {
-
-.editorPanel{
-  width: 80%;
-}
-
+  .editorPanel {
+    width: 100%;
+  }
 }

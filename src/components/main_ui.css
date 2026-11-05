@@ -1,167 +1,89 @@
-body {
-  background-color: #0d0e15;
-  margin: 0;
-  font-family: system-ui, -apple-system, sans-serif;
-}
-
+/* src/components/main_ui.css */
 .MainLayout {
   display: flex;
   flex-direction: row;
+  gap: 20px;
+  padding: 16px 24px;
+  width: 100vw;
+  box-sizing: border-box;
+  margin: 0;
+}
+
+.EditorColumn {
+  flex: 1.5;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.HelperColumn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 320px;
+  box-sizing: border-box;
+}
+
+.Helper textarea {
+  box-sizing: border-box;
+  font-family: monospace;
+  background-color: #181825;
+  color: #cdd6f4;
+  border: 1px solid #45475a;
+  border-radius: 6px;
+  padding: 10px;
+  width: 100%;
+}
+
+.Helper textarea:focus {
+  outline: 1px solid #89b4fa;
+}
+
+/* Fix input overflow inside boxes */
+.pass-container {
+  display: flex;
+  gap: 8px;
   align-items: center;
-  justify-content: center;
-  gap: 16px;
-  height: 100vh;
-  padding: 24px;
-  box-sizing: border-box;
   width: 100%;
-}
-
-
-.Editor {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end; 
-  flex: 3;
-  background-color: #161722;
-  height: 100%;
-  max-height: 800px;
-  border-radius: 16px;
-  border: 1px solid #2a2c3f;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  padding: 16px;
   box-sizing: border-box;
 }
 
-.compileTop {
-  padding: 8px;
-  height: 36px;
-  width: 90%;
-  border: 1px solid #2a2c3f;
-  border-radius: 12px;
-  background-color: #0d0e15;
-  margin-bottom: 5px;
-  justify-content: baseline;
-  align-self: center;
-}
-
-.compileBtn {
-  padding: 8px 16px;
-  height: 36px;
-  border: 1px solid #4f46e5;
-  border-radius: 8px;
-  background-color: #1e1f2f;
-  color: #c7d2fe;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  margin-left: 30px;
-  margin-bottom: 5px;
-}
-
-
-.compileBtn:hover {
-  background-color: #4f46e5;
-  color: #ffffff;
-}
-
-.codeTxt {
-  width: 100%;
-  flex: 1; 
-  border-radius: 12px;
-  padding: 14px;
-  background-color: #0f101a;
-  border: 1px solid #2a2c3f;
-  color: #ffffff;
-  font-family: monospace;
-  font-size: 14px;
-  resize: none;
-  box-sizing: border-box;
-  outline: none;
-}
-
-.codeTxt:focus {
-  border-color: #4f46e5;
-}
-
-
-.Helper {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  flex: 2;
-  background-color: #161722;
-  height: 100%;
-  max-height: 800px;
-  border-radius: 16px;
-  border: 1px solid #2a2c3f;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  padding: 16px;
+.pass-input {
+  background: #313244;
+  color: #fff;
+  border: 1px solid #45475a;
+  padding: 6px 10px;
+  border-radius: 4px;
+  flex: 1;
+  min-width: 0; /* Prevents overflow */
+  font-size: 0.85rem;
   box-sizing: border-box;
 }
 
-.Input {
-  flex: 1; 
-  width: 100%;
-  height: 230px;
-  border-radius: 12px;
-  padding: 14px;
-  background-color: #0f101a;
-  border: 1px solid #2a2c3f;
-  color: #ffffff;
-  font-size: 14px;
-  resize: none;
-  box-sizing: border-box;
-  outline: none;
+/* Custom Scrollbar */
+.Helper ::-webkit-scrollbar {
+  width: 6px;
 }
 
-.Output {
-  flex: 1; 
-  width: 100%;
-  height: 50%;
-  height: 350px;
-  border-radius: 12px;
-  padding: 14px;
-  background-color: #0f101a;
-  border: 1px solid #2a2c3f;
-  color: #a7a9be;
-  font-family: monospace;
-  font-size: 14px;
-  resize: none;
-  box-sizing: border-box;
-  outline: none;
+.Helper ::-webkit-scrollbar-track {
+  background: #181825;
 }
 
-.Input:focus, .Output:focus {
-  border-color: #4f46e5;
+.Helper ::-webkit-scrollbar-thumb {
+  background: #45475a;
+  border-radius: 4px;
 }
 
-
-@media screen and (max-width: 1000px) {
+@media screen and (max-width: 950px) {
   .MainLayout {
     flex-direction: column;
-    padding: 16px;
-    gap: 16px;
-    height: 100vh;
-    height: auto; 
+    padding: 12px;
   }
 
-  .Editor, .Helper {
-    flex:1;
+  .EditorColumn,
+  .HelperColumn {
     width: 100%;
-    height: 50vh; 
-    max-height: none;
-    border-radius: 12px;
-    min-height: 500px;
+    min-width: 100%;
   }
-
-  .compileTop{
-    min-height: 70px;
-  }
-
-  .compileBtn{
-    margin-top: 15 px;
-    margin-left: 0px;
-  }
-
-  
 }

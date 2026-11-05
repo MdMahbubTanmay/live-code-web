@@ -30,7 +30,7 @@ export async function executeCode(
       headers: {
         'Content-Type': 'application/json',
         // IMPORTANT: Replace with your actual RapidAPI Key
-      'X-RapidAPI-Key': "0e022532a9msh4af0b1c15d5ea81p16b1dcjsn27cf054be0c4", 
+      'X-RapidAPI-Key': import.meta.env.VITE_XRAPID_API, 
         'X-RapidAPI-Host': 'onecompiler-apis.p.rapidapi.com'
       },
       body: JSON.stringify({

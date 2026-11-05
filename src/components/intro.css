@@ -12,6 +12,7 @@
   margin: 16px auto; /* Centered using margin auto */
   justify-content: space-between;
   align-items: center;
+  align-self: center;
 }
 
 .intro-me {

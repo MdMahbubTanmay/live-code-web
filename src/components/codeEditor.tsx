@@ -1,4 +1,5 @@
-import { useState, useRef } from 'react';
+// src/components/codeEditor.tsx
+import { useState, useRef, useEffect } from 'react';
 import Editor, { type OnMount } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
 import '../components/codeEditor.css';
@@ -15,10 +16,23 @@ export function CodeEditor({ lang, code, setCode, roomId }: Props) {
   const [theme, setTheme] = useState<string>('vs-dark');
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
 
-  
   const handleEditorMount: OnMount = (editorInstance) => {
     editorRef.current = editorInstance;
   };
+
+  // Smooth remote text change handle strategy without removing cursor selection
+  useEffect(() => {
+    if (editorRef.current) {
+      const currentContent = editorRef.current.getValue();
+      if (code !== currentContent) {
+        const position = editorRef.current.getPosition();
+        editorRef.current.setValue(code);
+        if (position) {
+          editorRef.current.setPosition(position);
+        }
+      }
+    }
+  }, [code]);
 
   return (
     <div style={{ padding: '10px' }}>
@@ -46,7 +60,6 @@ export function CodeEditor({ lang, code, setCode, roomId }: Props) {
           const newCode = value || '';
           setCode(newCode);
 
-          
           if (editorRef.current && editorRef.current.hasTextFocus()) {
             uploadTextOnChange(roomId, newCode);
           }
@@ -55,6 +68,7 @@ export function CodeEditor({ lang, code, setCode, roomId }: Props) {
           fontSize: 14,
           minimap: { enabled: false },
           scrollBeyondLastLine: false,
+          automaticLayout: true
         }}
       />
     </div>

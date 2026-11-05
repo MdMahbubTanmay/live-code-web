@@ -6,7 +6,7 @@ export const Intro = () => {
       <div className="intro-me">
         <a href="https://git.io/typing-svg" target="_blank" rel="noopener noreferrer">
           <img
-            src="https://readme-typing-svg.demolab.com/?lines=Developed+By;%3C%2FMd+Mahbub+Tanmay%3E&center=true&width=200&height=25&duration=5000&color=4B0082&size=15"
+            src="https://readme-typing-svg.demolab.com/?lines=Developed+By;%3C%2FMahbub+And+Jahidul%3E&center=true&width=200&height=25&duration=5000&color=4B0082&size=15"
             alt="Typing SVG"
           />
         </a>
@@ -16,13 +16,13 @@ export const Intro = () => {
 
       <div className="intro-social">
         <a
-          href="https://github.com/MdMahbubTanmay"
+          href="https://github.com/MdMahbubTanmay/live-code-web"
           target="_blank"
           rel="noopener noreferrer"
         >
           GitHub
         </a>
-
+{/* 
         <a
           href="https://www.facebook.com/MdMahbubTanmay"
           target="_blank"
@@ -37,7 +37,7 @@ export const Intro = () => {
           rel="noopener noreferrer"
         >
           LinkedIn
-        </a>
+        </a> */}
       </div>
     </div>
   );

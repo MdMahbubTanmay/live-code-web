@@ -1,53 +1,58 @@
-import '../components/topbar.css'
-import { useState , useEffect} from 'react'
+// src/components/topbar.tsx
+import React, { useState } from 'react';
+import '../components/topbar.css';
+import { checkRoomExists } from '../services/roomServices';
 
-type Pros = {
-    setRoom : (id:string)=> void,
-}
-
-export const TopBar = ({setRoom}:Pros) => {
-
-    const[Ip, setIp] = useState('Loading');
-
-
-      useEffect(() => {
-    
-    fetch('https://api.ipify.org?format=json')
-      .then((response) => response.json())
-      .then((data) => setIp((data.ip).replaceAll('.','')))
-      .catch((error) => {
-        console.error('Error fetching IP:', error);
-        setIp('Unavailable');
-      });
-  }, []); 
-
-  const copyToClip = ()=>{
-    navigator.clipboard.writeText(Ip);
-    alert('ID Copied')
-  }
-
-const setId = () => {
-  const inputEl = document.getElementById('room-id-html') as HTMLTextAreaElement | HTMLInputElement | null;
-  
-  if (inputEl && inputEl.value.trim() !== '') {
-    setRoom(inputEl.value.trim());
-  } else {
-    alert('Enter a valid Room ID ');
-  }
+type Props = {
+  currentRoomAddress: string;
+  onJoinRoomRequest: (targetRoomId: string) => void;
 };
 
+export const TopBar = ({ currentRoomAddress, onJoinRoomRequest }: Props) => {
+  const [inputAddress, setInputAddress] = useState('');
 
-    return(
-     <div className="top">
-        
-        <button className='copyIp' onClick={copyToClip}>Copy Your ROOM Address : {Ip}</button>
+  const handleJoinClick = async () => {
+    const target = inputAddress.trim();
+    if (!target) return;
 
-        <div className='top2'>
+    // Check if room exists in Firebase DB
+    const res = await checkRoomExists(target);
+    if (!res.exists) {
+      alert('Room does not exist!');
+      return;
+    }
 
-        <textarea className='room-id' placeholder='Enter address..' id='room-id-html'></textarea>
-        <button className='joinBtn' onClick={setId}>Join</button>
-        </div>
-     </div>
-    
-    );
-}
+    onJoinRoomRequest(target);
+    setInputAddress('');
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(currentRoomAddress);
+    alert(`Copied Room Address: ${currentRoomAddress}`);
+  };
+
+  return (
+    <div className="topbar-container" style={{ padding: '12px 20px', background: '#181825', borderBottom: '1px solid #313244', display: 'flex', gap: '20px', alignItems: 'center' }}>
+      <div style={{ flex: 1, background: '#1e1e2e', border: '1px solid #45475a', borderRadius: '8px', padding: '10px 16px', color: '#cdd6f4', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>Copy Your ROOM Address : <strong style={{ color: '#89b4fa' }}>{currentRoomAddress}</strong></span>
+        <button onClick={handleCopy} style={{ background: '#313244', color: '#cdd6f4', border: '1px solid #45475a', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer' }}>Copy</button>
+      </div>
+
+      <div style={{ display: 'flex', gap: '10px', flex: 1 }}>
+        <input
+          type="text"
+          placeholder="Enter address.."
+          value={inputAddress}
+          onChange={(e) => setInputAddress(e.target.value)}
+          style={{ flex: 1, background: '#1e1e2e', border: '1px solid #45475a', borderRadius: '8px', padding: '10px 14px', color: '#fff' }}
+        />
+        <button
+          onClick={handleJoinClick}
+          style={{ padding: '0 24px', background: '#313244', color: '#cdd6f4', border: '1px solid #45475a', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+        >
+          Join
+        </button>
+      </div>
+    </div>
+  );
+};
