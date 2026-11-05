@@ -15,94 +15,59 @@ type Props = {
 export function CodeEditor({ lang, code, setCode, roomId }: Props) {
   const [theme, setTheme] = useState<string>('vs-dark');
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
-  
-  const isRemoteUpdating = useRef<boolean>(false);
-  const isLocalTyping = useRef<boolean>(false);
+  const isUpdatingFromRemote = useRef<boolean>(false);
 
   const handleEditorMount: OnMount = (editorInstance) => {
     editorRef.current = editorInstance;
   };
 
-  // Fixed Remote Sync with Strict Line-Number & Column Restoration
+  // Remote Firebase Change Handler with Exact Selection Preservation
   useEffect(() => {
     const currentEditor = editorRef.current;
     if (!currentEditor) return;
-
-    // Skip if current device user is typing locally
-    if (isLocalTyping.current) return;
 
     const currentModel = currentEditor.getModel();
     if (!currentModel) return;
 
     const currentContent = currentModel.getValue();
 
-    if (code !== currentContent) {
-      isRemoteUpdating.current = true;
+    // Only apply remote edit if content actually changed
+    if (code !== currentContent && !currentEditor.hasTextFocus()) {
+      isUpdatingFromRemote.current = true;
 
-      // 1. Capture exact Line Number & Column position before applying edit
-      const currentPosition = currentEditor.getPosition();
-      const currentSelection = currentEditor.getSelection();
-      const hasFocus = currentEditor.hasTextFocus();
+      // Save exact cursor position before edit
+      const position = currentEditor.getPosition();
+      const selection = currentEditor.getSelection();
 
-      // 2. Non-destructive Edit Operations
-      currentEditor.pushUndoStop();
-      currentModel.pushEditOperations(
-        [],
-        [
-          {
-            range: currentModel.getFullModelRange(),
-            text: code,
-          },
-        ],
-        () => null
-      );
-      currentEditor.pushUndoStop();
+      // Delta Edit execution
+      currentEditor.executeEdits('remote-sync', [
+        {
+          range: currentModel.getFullModelRange(),
+          text: code,
+          forceMoveMarkers: true,
+        },
+      ]);
 
-      // 3. Prevent Cursor Jumping to Last Line: Force Restore Exact Line & Column
-      if (currentPosition) {
-        // Validate if line position still exists in new model line count
-        const totalLines = currentModel.getLineCount();
-        const safeLineNumber = Math.min(currentPosition.lineNumber, totalLines);
-        const maxCol = currentModel.getLineMaxColumn(safeLineNumber);
-        const safeColumn = Math.min(currentPosition.column, maxCol);
-
-        currentEditor.setPosition({
-          lineNumber: safeLineNumber,
-          column: safeColumn,
-        });
+      // Restore exact position & selection so it doesn't jump to last line
+      if (position) {
+        currentEditor.setPosition(position);
+      }
+      if (selection) {
+        currentEditor.setSelection(selection);
       }
 
-      if (currentSelection && currentPosition) {
-        currentEditor.setSelection({
-          startLineNumber: Math.min(currentSelection.startLineNumber, currentModel.getLineCount()),
-          startColumn: currentSelection.startColumn,
-          endLineNumber: Math.min(currentSelection.endLineNumber, currentModel.getLineCount()),
-          endColumn: currentSelection.endColumn,
-        });
-      }
-
-      if (hasFocus) {
-        currentEditor.focus();
-      }
-
-      isRemoteUpdating.current = false;
+      isUpdatingFromRemote.current = false;
     }
   }, [code]);
 
   const handleContentChange = (value: string | undefined) => {
-    if (isRemoteUpdating.current) return;
+    if (isUpdatingFromRemote.current) return;
 
     const newCode = value || '';
     setCode(newCode);
 
     if (editorRef.current && editorRef.current.hasTextFocus()) {
-      isLocalTyping.current = true;
-
-      uploadTextOnChange(roomId, newCode).finally(() => {
-        setTimeout(() => {
-          isLocalTyping.current = false;
-        }, 120);
-      });
+      uploadTextOnChange(roomId, newCode);
     }
   };
 
@@ -126,7 +91,7 @@ export function CodeEditor({ lang, code, setCode, roomId }: Props) {
         className="editorPanel"
         defaultLanguage="cpp"
         theme={theme}
-        value={code}
+        defaultValue={code} // Uncontrolled mode to prevent automatic re-renders
         onMount={handleEditorMount}
         onChange={handleContentChange}
         options={{
