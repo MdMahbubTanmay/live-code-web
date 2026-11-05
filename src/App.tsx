@@ -11,7 +11,8 @@ import {
   uploadIOOnChange,
   updateUserAlias,
   checkRoomExists,
-  setRoomPassword
+  setRoomPassword,
+  clearRoomLogs
 } from './services/roomServices';
 // import { Intro } from './components/introduction';
 
@@ -79,23 +80,41 @@ int main() {
   }, [roomId, userIp, username, myAlias]);
 
   // Requesting To Join Another Room
-  const handleJoinRoomRequest = async (targetRoomId: string) => {
+
+const handleJoinRoomRequest = async (targetRoomId: string) => {
+  try {
     const roomInfo = await checkRoomExists(targetRoomId);
-    
+
+    if (!roomInfo.exists) {
+      alert('Room does not exist!');
+      return;
+    }
+
+    // Mentor নিজের room-এ ঢুকলে password লাগবে না
     if (roomInfo.isProtected && username !== targetRoomId) {
-      const enteredPass = window.prompt(`Room "${targetRoomId}" is password protected. Enter Password:`);
-      if (enteredPass === null) return; // User cancelled
-      
-      // Perform validation check
-      const roomRefSnap = await checkRoomExists(targetRoomId);
-      if (!roomRefSnap.exists) {
-        alert('Room does not exist!');
+      const enteredPass = window.prompt(
+        `Room "${targetRoomId}" is password protected. Enter Password:`
+      );
+
+      // Cancel করলে join হবে না
+      if (enteredPass === null) return;
+
+      // Password validation
+      if (enteredPass !== roomInfo.password) {
+        alert('Incorrect room password!');
         return;
       }
     }
 
+    // সব validation pass করলেই room change হবে
     setRoomId(targetRoomId);
-  };
+
+  } catch (error) {
+    console.error('Room join error:', error);
+    alert('Unable to join room. Please try again.');
+  }
+};
+
 
   const handleInputChange = (newVal: string) => {
     setInputVal(newVal);
@@ -113,6 +132,28 @@ int main() {
       uploadIOOnChange(roomId, inputVal, errorMsg);
     }
   };
+
+
+
+const handleClearLogs = async () => {
+  if (!isMentor) return;
+
+  const confirmed = window.confirm(
+    'Are you sure you want to clear all connected users logs?'
+  );
+
+  if (!confirmed) return;
+
+  try {
+    await clearRoomLogs(roomId);
+    setConnectedUsers({});
+    alert('All logs cleared successfully!');
+  } catch (error) {
+    console.error('Failed to clear logs:', error);
+    alert('Failed to clear logs. Please try again.');
+  }
+};
+
 
   const handleLoginSuccess = (loggedUser: string) => {
     setUsername(loggedUser);
@@ -174,6 +215,7 @@ int main() {
   onUpdateAlias={(ip, newAlias) => updateUserAlias(roomId, ip, newAlias)}
   myAlias={myAlias}
   setMyAlias={setMyAlias}
+  onClearLogs={handleClearLogs}
 />
 
       <AuthModal
