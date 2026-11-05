@@ -2,8 +2,10 @@
 import { useState, useRef, useEffect } from 'react';
 import Editor, { type OnMount } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
+import * as Y from 'yjs';
+import { MonacoBinding } from 'y-monaco';
+import { WebrtcProvider } from 'y-webrtc';
 import '../components/codeEditor.css';
-import { uploadTextOnChange } from '../services/roomServices';
 
 type Props = {
   lang: string;
@@ -12,78 +14,47 @@ type Props = {
   roomId: string;
 };
 
-export function CodeEditor({ lang, code, setCode, roomId }: Props) {
+export function CodeEditor({ lang, setCode, roomId }: Props) {
   const [theme, setTheme] = useState<string>('vs-dark');
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
-  const isSelfTyping = useRef<boolean>(false);
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleEditorMount: OnMount = (editorInstance) => {
     editorRef.current = editorInstance;
   };
 
-  // Remote Firebase push update handler
   useEffect(() => {
-    const editor = editorRef.current;
-    if (!editor) return;
+    const currentEditor = editorRef.current;
+    if (!currentEditor || !roomId) return;
 
-    // Direct skip if the change originated from local active typing
-    if (isSelfTyping.current) return;
+    // 1. Yjs Shared Document Instance Setup
+    const ydoc = new Y.Doc();
 
-    const currentModel = editor.getModel();
-    if (!currentModel) return;
+    // 2. Room-based Peer-to-Peer Realtime WebRTC Provider Sync Engine
+    const provider = new WebrtcProvider(`live-code-room-${roomId}`, ydoc);
+    const yText = ydoc.getText('monaco');
 
-    const currentContent = currentModel.getValue();
+    const model = currentEditor.getModel();
+    if (!model) return;
 
-    // Perform non-destructive text replacement only if content differs
-    if (code !== currentContent) {
-      const selections = editor.getSelections();
-      const hasFocus = editor.hasTextFocus();
+    // 3. Bind Monaco Editor Model with Yjs Shared Text State
+    const binding = new MonacoBinding(
+      yText,
+      model,
+      new Set([currentEditor]),
+      provider.awareness
+    );
 
-      // Apply Monaco delta changes safely
-      editor.executeEdits('remote-sync-system', [
-        {
-          range: currentModel.getFullModelRange(),
-          text: code,
-          forceMoveMarkers: true,
-        },
-      ]);
+    // Track text changes to keep parent state updated
+    yText.observe(() => {
+      setCode(yText.toString());
+    });
 
-      // Preserve active line selections
-      if (selections && selections.length > 0) {
-        editor.setSelections(selections);
-      }
-
-      // Re-claim focus silently if editor was active
-      if (hasFocus && !editor.hasTextFocus()) {
-        editor.focus();
-      }
-    }
-  }, [code]);
-
-  const handleEditorChange = (value: string | undefined) => {
-    const newCode = value || '';
-    setCode(newCode);
-
-    const editor = editorRef.current;
-    if (editor && editor.hasTextFocus()) {
-      isSelfTyping.current = true;
-
-      // Debounce server upload to avoid micro-lag cursor conflicts
-      if (debounceTimer.current) {
-        clearTimeout(debounceTimer.current);
-      }
-
-      debounceTimer.current = setTimeout(() => {
-        uploadTextOnChange(roomId, newCode).finally(() => {
-          // Release self typing lock after sync payload settles
-          setTimeout(() => {
-            isSelfTyping.current = false;
-          }, 150);
-        });
-      }, 200);
-    }
-  };
+    return () => {
+      binding.destroy();
+      provider.destroy();
+      ydoc.destroy();
+    };
+  }, [roomId]);
 
   return (
     <div style={{ padding: '10px' }}>
@@ -105,9 +76,7 @@ export function CodeEditor({ lang, code, setCode, roomId }: Props) {
         className="editorPanel"
         defaultLanguage="cpp"
         theme={theme}
-        value={code}
         onMount={handleEditorMount}
-        onChange={handleEditorChange}
         options={{
           fontSize: 14,
           minimap: { enabled: false },

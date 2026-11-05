@@ -13,7 +13,10 @@
     "@monaco-editor/react": "^4.7.0",
     "firebase": "^12.16.0",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "y-monaco": "^0.1.6",
+    "y-webrtc": "^10.3.0",
+    "yjs": "^13.6.33"
   },
   "devDependencies": {
     "@types/node": "^24.13.2",
