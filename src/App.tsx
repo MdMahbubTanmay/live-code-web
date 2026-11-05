@@ -12,7 +12,8 @@ import {
   updateUserAlias,
   checkRoomExists,
   setRoomPassword,
-  clearRoomLogs
+  clearRoomLogs,
+  type RoomData
 } from './services/roomServices';
 import { Intro } from './components/introduction';
 
@@ -35,14 +36,14 @@ int main() {
   const [inputVal, setInputVal] = useState<string>('');
   const [outputVal, setOutputVal] = useState<string>('');
   const [roomPassword, setRoomPasswordState] = useState<string>('');
-  const [connectedUsers, setConnectedUsers] = useState<Record<string, { ip: string; alias: string }>>({});
+  const [connectedUsers, setConnectedUsers] = useState<Record<string, { ip: string; alias: string; joinedAt?: number }>>({});
   const [isAuthOpen, setIsAuthOpen] = useState<boolean>(false);
 
-  // 1. Initial IP Detection & Default Public Room Setup
+  // 1. Detect User IP
   useEffect(() => {
     fetch('https://api.ipify.org?format=json')
       .then((res) => res.json())
-      .then((data) => {
+      .then((data: { ip: string }) => {
         const cleanIp = data.ip.replaceAll('.', '');
         setUserIp(cleanIp);
         if (!username) {
@@ -56,18 +57,30 @@ int main() {
       });
   }, [username]);
 
-  // 2. Real-time Firebase Synchronization Listener
+  // 2. Real-time Firebase Room Sync Listener
   useEffect(() => {
     if (!roomId) return;
 
     const currentAlias = username ? username : myAlias;
 
-    joinRoom(roomId, userIp, currentAlias, code).catch((err) =>
+    joinRoom(roomId, userIp, currentAlias, code).catch((err: unknown) =>
       console.error('Join error:', err)
     );
 
-    const unsubscribe = listenToRoomChanges(roomId, (roomData) => {
-      if (roomData.code !== undefined && roomData.code !== code) setCode(roomData.code);
+    const unsubscribe = listenToRoomChanges(roomId, (roomData: RoomData) => {
+      if (roomData.lines) {
+        const sortedLines = Object.keys(roomData.lines)
+          .sort((a, b) => parseInt(a.replace('line_', '')) - parseInt(b.replace('line_', '')))
+          .map((k) => roomData.lines![k]);
+        
+        const mergedCode = sortedLines.join('\n');
+        if (mergedCode !== code) {
+          setCode(mergedCode);
+        }
+      } else if (roomData.code !== undefined && roomData.code !== code) {
+        setCode(roomData.code);
+      }
+
       if (roomData.input !== undefined) setInputVal(roomData.input);
       if (roomData.output !== undefined) setOutputVal(roomData.output);
       if (roomData.password !== undefined) setRoomPasswordState(roomData.password);
@@ -83,7 +96,7 @@ int main() {
     };
   }, [roomId, userIp, username, myAlias]);
 
-  // FIX: Explicit Password Validation for Protected Rooms
+  // Request to Join Room with Password Checking
   const handleJoinRoomRequest = async (targetRoomId: string) => {
     const roomInfo = await checkRoomExists(targetRoomId);
 
@@ -92,15 +105,14 @@ int main() {
       return;
     }
 
-    // Password validation for protected mentor rooms
     if (roomInfo.isProtected && username !== targetRoomId) {
       const enteredPass = window.prompt(`Room "${targetRoomId}" is password protected. Enter Password:`);
       
-      if (enteredPass === null) return; // User cancelled prompt
+      if (enteredPass === null) return;
 
       if (enteredPass.trim() !== roomInfo.password?.trim()) {
         alert('Incorrect Room Password! Access Denied.');
-        return; // BLOCK JOIN ON WRONG PASSWORD
+        return;
       }
     }
 
@@ -117,7 +129,7 @@ int main() {
       const result: string = await executeCode(code, inputVal, langg);
       setOutputVal(result);
       uploadIOOnChange(roomId, inputVal, result);
-    } catch (err) {
+    } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       setOutputVal(errorMsg);
       uploadIOOnChange(roomId, inputVal, errorMsg);

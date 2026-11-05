@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from 'react';
 import Editor, { type OnMount } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
 import '../components/codeEditor.css';
-import { uploadTextOnChange } from '../services/roomServices';
+import { uploadLineChange } from '../services/roomServices';
 
 type Props = {
   lang: string;
@@ -15,13 +15,13 @@ type Props = {
 export function CodeEditor({ lang, code, setCode, roomId }: Props) {
   const [theme, setTheme] = useState<string>('vs-dark');
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
-  const isUpdatingFromRemote = useRef<boolean>(false);
+  const isRemoteUpdating = useRef<boolean>(false);
 
   const handleEditorMount: OnMount = (editorInstance) => {
     editorRef.current = editorInstance;
   };
 
-  // Safe Remote Sync: Maintains Cursor Position on Active Lines
+  // Remote Line-by-Line Update Listener Sync
   useEffect(() => {
     const currentEditor = editorRef.current;
     if (!currentEditor) return;
@@ -31,16 +31,14 @@ export function CodeEditor({ lang, code, setCode, roomId }: Props) {
 
     const currentContent = currentModel.getValue();
 
-    // Sync only if remote text differs
-    if (code !== currentContent) {
-      isUpdatingFromRemote.current = true;
+    if (code !== currentContent && !currentEditor.hasTextFocus()) {
+      isRemoteUpdating.current = true;
 
-      // 1. Capture exact cursor position & selections before edit
+      // Preserve exact local selection & cursor
       const position = currentEditor.getPosition();
       const selection = currentEditor.getSelection();
 
-      // 2. Perform delta replacement without full buffer destruction
-      currentEditor.executeEdits('remote-firebase-sync', [
+      currentEditor.executeEdits('line-sync', [
         {
           range: currentModel.getFullModelRange(),
           text: code,
@@ -48,32 +46,36 @@ export function CodeEditor({ lang, code, setCode, roomId }: Props) {
         },
       ]);
 
-      // 3. Restore exact position & selection so cursor stays on active line
       if (position) {
-        const lineCount = currentModel.getLineCount();
-        const safeLine = Math.min(position.lineNumber, lineCount);
-        const maxCol = currentModel.getLineMaxColumn(safeLine);
-        const safeCol = Math.min(position.column, maxCol);
-
-        currentEditor.setPosition({ lineNumber: safeLine, column: safeCol });
+        currentEditor.setPosition(position);
       }
-
-      if (selection && position) {
+      if (selection) {
         currentEditor.setSelection(selection);
       }
 
-      isUpdatingFromRemote.current = false;
+      isRemoteUpdating.current = false;
     }
   }, [code]);
 
+  // Line Detection on Typing
   const handleContentChange = (value: string | undefined) => {
-    if (isUpdatingFromRemote.current) return;
+    if (isRemoteUpdating.current) return;
 
     const newCode = value || '';
     setCode(newCode);
 
-    if (editorRef.current && editorRef.current.hasTextFocus()) {
-      uploadTextOnChange(roomId, newCode);
+    const currentEditor = editorRef.current;
+    if (currentEditor && currentEditor.hasTextFocus()) {
+      const position = currentEditor.getPosition();
+      if (position) {
+        const lineIdx = position.lineNumber - 1;
+        const currentModel = currentEditor.getModel();
+        if (currentModel) {
+          const lineContent = currentModel.getLineContent(position.lineNumber);
+          // Sync ONLY the specific line being edited
+          uploadLineChange(roomId, lineIdx, lineContent);
+        }
+      }
     }
   };
 
