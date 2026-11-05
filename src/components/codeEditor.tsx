@@ -1,83 +1,164 @@
 // src/components/codeEditor.tsx
-import { useState, useRef, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Editor, { type OnMount } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
+import * as Y from 'yjs';
+import { Awareness } from 'y-protocols/awareness';
+import { MonacoBinding } from 'y-monaco';
 import '../components/codeEditor.css';
-import { uploadLineChange } from '../services/roomServices';
+import { FirebaseYjsProvider } from '../services/firebaseYjsProvider';
 
 type Props = {
   lang: string;
   code: string;
   setCode: (value: string) => void;
   roomId: string;
+  userName: string;
 };
 
-export function CodeEditor({ lang, code, setCode, roomId }: Props) {
-  const [theme, setTheme] = useState<string>('vs-dark');
-  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
-  const isRemoteUpdating = useRef<boolean>(false);
+const CURSOR_COLORS = [
+  '#f38ba8', '#89b4fa', '#a6e3a1', '#f9e2af', '#cba6f7',
+  '#94e2d5', '#fab387', '#f2cdcd', '#74c7ec', '#b4befe',
+];
 
-  const handleEditorMount: OnMount = (editorInstance) => {
-    editorRef.current = editorInstance;
+function colorForUser(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i += 1) {
+    hash = (hash * 31 + name.charCodeAt(i)) | 0;
+  }
+  return CURSOR_COLORS[Math.abs(hash) % CURSOR_COLORS.length];
+}
+
+export function CodeEditor({ lang, code, setCode, roomId, userName }: Props) {
+  const [theme, setTheme] = useState('vs-dark');
+  const [editorInstance, setEditorInstance] =
+    useState<editor.IStandaloneCodeEditor | null>(null);
+  const setCodeRef = useRef(setCode);
+  const userNameRef = useRef(userName);
+  const awarenessRef = useRef<Awareness | null>(null);
+  const initialCodeRef = useRef(code);
+
+  useEffect(() => { setCodeRef.current = setCode; }, [setCode]);
+  useEffect(() => { userNameRef.current = userName; }, [userName]);
+
+  const handleEditorMount: OnMount = (instance) => {
+    setEditorInstance(instance);
   };
 
-  // Remote Line-by-Line Update Listener Sync
   useEffect(() => {
-    const currentEditor = editorRef.current;
-    if (!currentEditor) return;
+    if (!editorInstance || !roomId) return;
+    const model = editorInstance.getModel();
+    if (!model) return;
 
-    const currentModel = currentEditor.getModel();
-    if (!currentModel) return;
+    const ydoc = new Y.Doc();
+    const awareness = new Awareness(ydoc);
+    awarenessRef.current = awareness;
+    const sharedText = ydoc.getText('code');
 
-    const currentContent = currentModel.getValue();
+    const name = userNameRef.current.trim() || 'Guest';
+    const color = colorForUser(name);
+    awareness.setLocalState({
+      user: { name, color, colorLight: `${color}33` },
+    });
 
-    if (code !== currentContent && !currentEditor.hasTextFocus()) {
-      isRemoteUpdating.current = true;
+    const provider = new FirebaseYjsProvider({
+      roomId,
+      doc: ydoc,
+      awareness,
+      initialCode: initialCodeRef.current,
+    });
 
-      // Preserve exact local selection & cursor
-      const position = currentEditor.getPosition();
-      const selection = currentEditor.getSelection();
+    // y-monaco applies CRDT text deltas to Monaco's model, rather than
+    // replacing the whole editor value. Local focus and cursor are preserved.
+    const binding = new MonacoBinding(
+      sharedText,
+      model,
+      new Set([editorInstance]),
+      awareness
+    );
 
-      currentEditor.executeEdits('line-sync', [
-        {
-          range: currentModel.getFullModelRange(),
-          text: code,
-          forceMoveMarkers: true,
-        },
-      ]);
+    const publishReactValue = () => {
+      setCodeRef.current(sharedText.toString());
+    };
+    sharedText.observe(publishReactValue);
+    publishReactValue();
 
-      if (position) {
-        currentEditor.setPosition(position);
-      }
-      if (selection) {
-        currentEditor.setSelection(selection);
-      }
+    // y-monaco supplies remote cursor/selection decorations. These styles add
+    // readable per-user colors and a small alias label above each remote caret.
+    const styleElement = document.createElement('style');
+    styleElement.dataset.collabRoom = roomId;
+    document.head.appendChild(styleElement);
 
-      isRemoteUpdating.current = false;
-    }
-  }, [code]);
+    const updateRemoteCursorStyles = () => {
+      const css: string[] = [];
+      awareness.getStates().forEach((state, clientId) => {
+        if (clientId === ydoc.clientID) return;
+        const user = state.user as
+          | { name?: string; color?: string }
+          | undefined;
+        const safeColor = /^#[0-9a-fA-F]{6}$/.test(user?.color ?? '')
+          ? user!.color!
+          : '#89b4fa';
+        const safeName = String(user?.name ?? 'Guest')
+          .replace(/[\u0000-\u001f"'\\]/g, '')
+          .slice(0, 32);
 
-  // Line Detection on Typing
-  const handleContentChange = (value: string | undefined) => {
-    if (isRemoteUpdating.current) return;
+        css.push(`
+          .yRemoteSelection-${clientId} {
+            background-color: ${safeColor}40 !important;
+          }
+          .yRemoteSelectionHead-${clientId} {
+            border-color: ${safeColor} !important;
+            position: relative;
+          }
+          .yRemoteSelectionHead-${clientId}::after {
+            content: "${safeName}";
+            position: absolute;
+            left: -1px;
+            bottom: 100%;
+            padding: 2px 6px;
+            border-radius: 4px 4px 4px 0;
+            background: ${safeColor};
+            color: #11111b;
+            font: 600 11px/1.4 sans-serif;
+            white-space: nowrap;
+            pointer-events: none;
+            z-index: 100;
+          }
+        `);
+      });
+      styleElement.textContent = css.join('\n');
+    };
 
-    const newCode = value || '';
-    setCode(newCode);
+    awareness.on('change', updateRemoteCursorStyles);
+    updateRemoteCursorStyles();
 
-    const currentEditor = editorRef.current;
-    if (currentEditor && currentEditor.hasTextFocus()) {
-      const position = currentEditor.getPosition();
-      if (position) {
-        const lineIdx = position.lineNumber - 1;
-        const currentModel = currentEditor.getModel();
-        if (currentModel) {
-          const lineContent = currentModel.getLineContent(position.lineNumber);
-          // Sync ONLY the specific line being edited
-          uploadLineChange(roomId, lineIdx, lineContent);
-        }
-      }
-    }
-  };
+    return () => {
+      awarenessRef.current = null;
+      awareness.off('change', updateRemoteCursorStyles);
+      sharedText.unobserve(publishReactValue);
+      binding.destroy();
+      provider.destroy();
+      styleElement.remove();
+      awareness.destroy();
+      ydoc.destroy();
+    };
+  }, [editorInstance, roomId]);
+
+  // Alias updates are awareness-only; they do not recreate the Yjs document.
+  useEffect(() => {
+    const awareness = awarenessRef.current;
+    if (!awareness) return;
+    const current = awareness.getLocalState();
+    if (!current) return;
+
+    const name = userName.trim() || 'Guest';
+    const color = colorForUser(name);
+    awareness.setLocalState({
+      ...current,
+      user: { name, color, colorLight: `${color}33` },
+    });
+  }, [userName, editorInstance, roomId]);
 
   return (
     <div style={{ padding: '10px' }}>
@@ -86,27 +167,27 @@ export function CodeEditor({ lang, code, setCode, roomId }: Props) {
         <select
           className="theme"
           value={theme}
-          onChange={(e) => setTheme(e.target.value)}
+          onChange={(event) => setTheme(event.target.value)}
         >
           <option value="vs-dark">Dark</option>
           <option value="light">Light</option>
         </select>
       </div>
-
       <Editor
         height="65vh"
         language={lang}
         className="editorPanel"
         defaultLanguage="cpp"
         theme={theme}
-        value={code}
+        defaultValue={initialCodeRef.current}
         onMount={handleEditorMount}
-        onChange={handleContentChange}
         options={{
           fontSize: 14,
           minimap: { enabled: false },
           scrollBeyondLastLine: false,
           automaticLayout: true,
+          cursorBlinking: 'smooth',
+          smoothScrolling: true,
         }}
       />
     </div>
