@@ -15,22 +15,54 @@ type Props = {
 export function CodeEditor({ lang, code, setCode, roomId }: Props) {
   const [theme, setTheme] = useState<string>('vs-dark');
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  const isUpdatingFromRemote = useRef<boolean>(false);
 
   const handleEditorMount: OnMount = (editorInstance) => {
     editorRef.current = editorInstance;
   };
 
-  // Smooth remote text change handle strategy without removing cursor selection
+  // Cursor focus loss prevention on remote change
   useEffect(() => {
-    if (editorRef.current) {
-      const currentContent = editorRef.current.getValue();
-      if (code !== currentContent) {
-        const position = editorRef.current.getPosition();
-        editorRef.current.setValue(code);
-        if (position) {
-          editorRef.current.setPosition(position);
-        }
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const currentModel = editor.getModel();
+    if (!currentModel) return;
+
+    const currentContent = currentModel.getValue();
+
+    // Only sync if remote content is actually different
+    if (code !== currentContent) {
+      isUpdatingFromRemote.current = true;
+
+      // Preserve cursor position & selection before remote code update
+      const selection = editor.getSelection();
+      const position = editor.getPosition();
+      const hasFocus = editor.hasTextFocus();
+
+      // Execute edits smoothly without triggering full value re-render focus loss
+      editor.executeEdits('remote-sync', [
+        {
+          range: currentModel.getFullModelRange(),
+          text: code,
+          forceMoveMarkers: true,
+        },
+      ]);
+
+      // Restore position & selection
+      if (position) {
+        editor.setPosition(position);
       }
+      if (selection) {
+        editor.setSelection(selection);
+      }
+
+      // Re-focus if user was typing actively
+      if (hasFocus) {
+        editor.focus();
+      }
+
+      isUpdatingFromRemote.current = false;
     }
   }, [code]);
 
@@ -38,9 +70,9 @@ export function CodeEditor({ lang, code, setCode, roomId }: Props) {
     <div style={{ padding: '10px' }}>
       <div style={{ marginBottom: '10px' }}>
         <label style={{ marginRight: '8px', color: '#fff' }}>Theme: </label>
-        <select 
-          className="theme" 
-          value={theme} 
+        <select
+          className="theme"
+          value={theme}
           onChange={(e) => setTheme(e.target.value)}
         >
           <option value="vs-dark">Dark</option>
@@ -57,6 +89,9 @@ export function CodeEditor({ lang, code, setCode, roomId }: Props) {
         value={code}
         onMount={handleEditorMount}
         onChange={(value) => {
+          // Ignore triggering change upload when content was pushed from remote
+          if (isUpdatingFromRemote.current) return;
+
           const newCode = value || '';
           setCode(newCode);
 
@@ -68,7 +103,7 @@ export function CodeEditor({ lang, code, setCode, roomId }: Props) {
           fontSize: 14,
           minimap: { enabled: false },
           scrollBeyondLastLine: false,
-          automaticLayout: true
+          automaticLayout: true,
         }}
       />
     </div>
