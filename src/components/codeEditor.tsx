@@ -16,7 +16,6 @@ export function CodeEditor({ lang, code, setCode, roomId }: Props) {
   const [theme, setTheme] = useState<string>('vs-dark');
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   
-  // Flags to prevent infinite state update loops
   const isRemoteUpdating = useRef<boolean>(false);
   const isLocalTyping = useRef<boolean>(false);
 
@@ -24,12 +23,12 @@ export function CodeEditor({ lang, code, setCode, roomId }: Props) {
     editorRef.current = editorInstance;
   };
 
-  // 1. Handle Remote Code Changes without Losing Cursor Focus
+  // Safe Remote Sync using pushEditOperations for precise delta preservation
   useEffect(() => {
     const currentEditor = editorRef.current;
     if (!currentEditor) return;
 
-    // If local user is actively typing, skip incoming sync to avoid cursor jumping
+    // Local typing actove thakle incoming remote event suppress
     if (isLocalTyping.current) return;
 
     const currentModel = currentEditor.getModel();
@@ -37,28 +36,37 @@ export function CodeEditor({ lang, code, setCode, roomId }: Props) {
 
     const currentContent = currentModel.getValue();
 
-    // Only apply update if Firebase code is strictly different from editor code
     if (code !== currentContent) {
       isRemoteUpdating.current = true;
 
-      const selections = currentEditor.getSelections();
+      // 1. Exact Cursor Position + Selection Range capture
+      const currentSelection = currentEditor.getSelection();
+      const currentPosition = currentEditor.getPosition();
       const hasFocus = currentEditor.hasTextFocus();
 
-      // Non-destructive edit execution
-      currentEditor.executeEdits('remote-firebase-sync', [
-        {
-          range: currentModel.getFullModelRange(),
-          text: code,
-          forceMoveMarkers: true,
-        },
-      ]);
+      // 2. Push Line-by-Line Delta Edits without wiping cursor stack
+      currentEditor.pushUndoStop();
+      currentModel.pushEditOperations(
+        [],
+        [
+          {
+            range: currentModel.getFullModelRange(),
+            text: code,
+          },
+        ],
+        () => null
+      );
+      currentEditor.pushUndoStop();
 
-      // Restore Cursor Selections
-      if (selections) {
-        currentEditor.setSelections(selections);
+      // 3. Force restore exact local line position & column index
+      if (currentPosition) {
+        currentEditor.setPosition(currentPosition);
       }
 
-      // Restore Focus if active
+      if (currentSelection) {
+        currentEditor.setSelection(currentSelection);
+      }
+
       if (hasFocus) {
         currentEditor.focus();
       }
@@ -67,9 +75,7 @@ export function CodeEditor({ lang, code, setCode, roomId }: Props) {
     }
   }, [code]);
 
-  // 2. Handle Local Typing
   const handleContentChange = (value: string | undefined) => {
-    // Ignore changes triggered by remote code injection
     if (isRemoteUpdating.current) return;
 
     const newCode = value || '';
@@ -79,10 +85,9 @@ export function CodeEditor({ lang, code, setCode, roomId }: Props) {
       isLocalTyping.current = true;
 
       uploadTextOnChange(roomId, newCode).finally(() => {
-        // Release local typing flag after upload completes
         setTimeout(() => {
           isLocalTyping.current = false;
-        }, 100);
+        }, 120);
       });
     }
   };
