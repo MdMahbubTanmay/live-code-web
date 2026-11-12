@@ -13,7 +13,7 @@ export async function executeCode(
   input: string = '',
   language: string = 'python'
 ): Promise<string> {
-  // OneCompiler uses simple string identifiers for languages
+  
   const compilerMap: Record<string, string> = {
     python: 'python',
     cpp: 'cpp',
@@ -29,7 +29,7 @@ export async function executeCode(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        // IMPORTANT: Replace with your actual RapidAPI Key
+      
       'X-RapidAPI-Key': import.meta.env.VITE_XRAPID_API, 
         'X-RapidAPI-Host': 'onecompiler-apis.p.rapidapi.com'
       },

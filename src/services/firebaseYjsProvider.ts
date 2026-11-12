@@ -499,56 +499,43 @@ export class FirebaseYjsProvider {
   ): Promise<void> {
     try {
       await this.synced;
-
       if (this.destroyed) return;
 
-      const legacyCode = await this.waitForRoomCode(
-        initialCode
-      );
+      // Already Yjs data thakle legacy code diye kokhono seed korbo na
+      const updatesSnap = await get(this.updatesRef);
+      const hasUpdates = updatesSnap.exists();
 
-      if (this.destroyed) return;
+      if (!hasUpdates) {
+        const legacyCode = await this.waitForRoomCode(initialCode);
+        if (this.destroyed) return;
 
-      // Only one client migrates the old code into Yjs.
-      const ownerRef = ref(
-        db,
-        `rooms/${this.roomId}/collaboration/seedOwner`
-      );
+        const ownerRef = ref(
+          db,
+          `rooms/${this.roomId}/collaboration/seedOwner`
+        );
 
-      const transaction = await runTransaction(
-        ownerRef,
-        (current) => {
-          return current ?? this.clientKey;
-        }
-      );
-
-      if (this.destroyed) return;
-
-      if (
-        transaction.committed &&
-        transaction.snapshot.val() === this.clientKey
-      ) {
-        const sharedText = this.doc.getText('code');
+        const transaction = await runTransaction(
+          ownerRef,
+          (current) => current ?? this.clientKey
+        );
+        if (this.destroyed) return;
 
         if (
-          sharedText.length === 0 &&
-          legacyCode.length > 0
+          transaction.committed &&
+          transaction.snapshot.val() === this.clientKey
         ) {
-          sharedText.insert(0, legacyCode);
+          const sharedText = this.doc.getText('code');
+          if (sharedText.length === 0 && legacyCode.length > 0) {
+            sharedText.insert(0, legacyCode);
+          }
         }
       }
 
-      // Enable code mirroring only after initial migration.
+      // Seed/sync sesh hole tobei mirror chalu
       this.documentInitialized = true;
-
-      // Immediately synchronize the current Yjs document
-      // to rooms/{roomId}/code.
       this.scheduleCodeMirror();
-
     } catch (error) {
-      console.error(
-        '[collaboration] Document initialization failed:',
-        error
-      );
+      console.error('[collaboration] Document initialization failed:', error);
     }
   }
 

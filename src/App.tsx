@@ -1,5 +1,5 @@
 // src/App.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import './App.css';
 import { MainUI } from './components/main_ui';
 import { TopBar } from './components/topbar';
@@ -14,17 +14,18 @@ import {
   setRoomPassword,
   clearRoomLogs
 } from './services/roomServices';
-// import { Intro } from './components/introduction';
 
-function App() {
-  const [code, setCode] = useState<string>(
-`#include <iostream> 
+const DEFAULT_CODE = `#include <iostream> 
 
 int main() { 
     std::cout << "Hello, World!" << std::endl; 
     return 0; 
-}`
-  );
+}`;
+
+function App() {
+  const [code, setCode] = useState<string>(DEFAULT_CODE);
+  const codeRef = useRef(code);
+  useEffect(() => { codeRef.current = code; }, [code]);
 
   const [langg, setLang] = useState<string>('cpp');
   const [userIp, setUserIp] = useState<string>('127001');
@@ -38,16 +39,17 @@ int main() {
   const [connectedUsers, setConnectedUsers] = useState<Record<string, { ip: string; alias: string }>>({});
   const [isAuthOpen, setIsAuthOpen] = useState<boolean>(false);
 
-  // 1. Initial IP Detection & Setting Default IP Room
+  // alias ref: alias type korle effect restart hobe na
+  const aliasRef = useRef(myAlias);
+  useEffect(() => { aliasRef.current = myAlias; }, [myAlias]);
+
   useEffect(() => {
     fetch('https://api.ipify.org?format=json')
       .then((res) => res.json())
       .then((data) => {
         const cleanIp = data.ip.replaceAll('.', '');
         setUserIp(cleanIp);
-        if (!username) {
-          setRoomId(cleanIp);
-        }
+        if (!username) setRoomId(cleanIp);
       })
       .catch(() => {
         const fallback = '10312921041';
@@ -56,65 +58,62 @@ int main() {
       });
   }, [username]);
 
-  // 2. Real-time Room Data Subscription & Password Validation Logic
+  // Room join + listen (myAlias dependency nei)
   useEffect(() => {
     if (!roomId) return;
 
-    const currentAlias = username ? username : myAlias;
+    const currentAlias = username ? username : aliasRef.current;
 
-    joinRoom(roomId, userIp, currentAlias, code).catch((err) =>
+    joinRoom(roomId, userIp, currentAlias, DEFAULT_CODE).catch((err) =>
       console.error('Join error:', err)
     );
 
     const unsubscribe = listenToRoomChanges(roomId, (roomData) => {
-      if (roomData.code !== undefined && roomData.code !== code) setCode(roomData.code);
+      // code ekhane set hobe na, Yjs (codeEditor) eta handle kore
       if (roomData.input !== undefined) setInputVal(roomData.input);
       if (roomData.output !== undefined) setOutputVal(roomData.output);
       if (roomData.password !== undefined) setRoomPasswordState(roomData.password);
       if (roomData.connectedUsers) setConnectedUsers(roomData.connectedUsers);
     });
 
-    return () => {
-      unsubscribe();
-    };
-  }, [roomId, userIp, username, myAlias]);
+    return () => unsubscribe();
+  }, [roomId, userIp, username]);
 
-  // Requesting To Join Another Room
+  // Alias change hole shudhu alias update hobe
+  useEffect(() => {
+    if (!roomId || !userIp) return;
+    const t = setTimeout(() => {
+      updateUserAlias(roomId, userIp, username || myAlias).catch(() => {});
+    }, 500);
+    return () => clearTimeout(t);
+  }, [myAlias, roomId, userIp, username]);
 
-const handleJoinRoomRequest = async (targetRoomId: string) => {
-  try {
-    const roomInfo = await checkRoomExists(targetRoomId);
+  const handleJoinRoomRequest = async (targetRoomId: string) => {
+    try {
+      const roomInfo = await checkRoomExists(targetRoomId);
 
-    if (!roomInfo.exists) {
-      alert('Room does not exist!');
-      return;
-    }
-
-    // Mentor নিজের room-এ ঢুকলে password লাগবে না
-    if (roomInfo.isProtected && username !== targetRoomId) {
-      const enteredPass = window.prompt(
-        `Room "${targetRoomId}" is password protected. Enter Password:`
-      );
-
-      // Cancel করলে join হবে না
-      if (enteredPass === null) return;
-
-      // Password validation
-      if (enteredPass !== roomInfo.password) {
-        alert('Incorrect room password!');
+      if (!roomInfo.exists) {
+        alert('Room does not exist!');
         return;
       }
+
+      if (roomInfo.isProtected && username !== targetRoomId) {
+        const enteredPass = window.prompt(
+          `Room "${targetRoomId}" is password protected. Enter Password:`
+        );
+        if (enteredPass === null) return;
+        if (enteredPass !== roomInfo.password) {
+          alert('Incorrect room password!');
+          return;
+        }
+      }
+
+      setRoomId(targetRoomId);
+    } catch (error) {
+      console.error('Room join error:', error);
+      alert('Unable to join room. Please try again.');
     }
-
-    // সব validation pass করলেই room change হবে
-    setRoomId(targetRoomId);
-
-  } catch (error) {
-    console.error('Room join error:', error);
-    alert('Unable to join room. Please try again.');
-  }
-};
-
+  };
 
   const handleInputChange = (newVal: string) => {
     setInputVal(newVal);
@@ -123,7 +122,7 @@ const handleJoinRoomRequest = async (targetRoomId: string) => {
 
   const compileClick = async () => {
     try {
-      const result: string = await executeCode(code, inputVal, langg);
+      const result: string = await executeCode(codeRef.current, inputVal, langg);
       setOutputVal(result);
       uploadIOOnChange(roomId, inputVal, result);
     } catch (err) {
@@ -133,45 +132,35 @@ const handleJoinRoomRequest = async (targetRoomId: string) => {
     }
   };
 
+  const isMentor = Boolean(username && username === roomId);
 
+  const handleClearLogs = async () => {
+    if (!isMentor) return;
+    if (!window.confirm('Are you sure you want to clear all connected users logs?')) return;
 
-const handleClearLogs = async () => {
-  if (!isMentor) return;
-
-  const confirmed = window.confirm(
-    'Are you sure you want to clear all connected users logs?'
-  );
-
-  if (!confirmed) return;
-
-  try {
-    await clearRoomLogs(roomId);
-    setConnectedUsers({});
-    alert('All logs cleared successfully!');
-  } catch (error) {
-    console.error('Failed to clear logs:', error);
-    alert('Failed to clear logs. Please try again.');
-  }
-};
-
+    try {
+      await clearRoomLogs(roomId);
+      setConnectedUsers({});
+      alert('All logs cleared successfully!');
+    } catch (error) {
+      console.error('Failed to clear logs:', error);
+      alert('Failed to clear logs. Please try again.');
+    }
+  };
 
   const handleLoginSuccess = (loggedUser: string) => {
     setUsername(loggedUser);
     setMyAlias(loggedUser);
-    setRoomId(loggedUser); // Automatically shifts to dynamic user room address
+    setRoomId(loggedUser);
   };
-
-  const isMentor = Boolean(username && username === roomId);
 
   return (
     <>
-      {/* TopBar Address auto syncs: Shows Username if Logged-in Mentor room else IP Address */}
       <TopBar
         currentRoomAddress={isMentor ? username : roomId}
         onJoinRoomRequest={handleJoinRoomRequest}
       />
 
-      {/* Dynamic Status Display Bar */}
       <div style={{
         padding: '8px 20px', background: '#11111b', color: '#cdd6f4',
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -195,36 +184,34 @@ const handleClearLogs = async () => {
         </button>
       </div>
 
-<MainUI
-  onClick={compileClick}
-  onClickCpp={() => setLang('cpp')}
-  onClickJava={() => setLang('java')}
-  onClickPython={() => setLang('python')}
-  code={code}
-  lang={langg}
-  setCode={setCode}
-  roomId={roomId}
-  inputVal={inputVal}
-  setInputVal={handleInputChange}
-  outputVal={outputVal}
-  setOutputVal={setOutputVal}
-  isMentor={isMentor}
-  roomPassword={roomPassword}
-  onSetPassword={(pass) => setRoomPassword(roomId, pass)}
-  connectedUsers={connectedUsers}
-  onUpdateAlias={(ip, newAlias) => updateUserAlias(roomId, ip, newAlias)}
-  myAlias={myAlias}
-  setMyAlias={setMyAlias}
-  onClearLogs={handleClearLogs}
-/>
+      <MainUI
+        onClick={compileClick}
+        onClickCpp={() => setLang('cpp')}
+        onClickJava={() => setLang('java')}
+        onClickPython={() => setLang('python')}
+        code={code}
+        lang={langg}
+        setCode={setCode}
+        roomId={roomId}
+        inputVal={inputVal}
+        setInputVal={handleInputChange}
+        outputVal={outputVal}
+        setOutputVal={setOutputVal}
+        isMentor={isMentor}
+        roomPassword={roomPassword}
+        onSetPassword={(pass) => setRoomPassword(roomId, pass)}
+        connectedUsers={connectedUsers}
+        onUpdateAlias={(ip, newAlias) => updateUserAlias(roomId, ip, newAlias)}
+        myAlias={myAlias}
+        setMyAlias={setMyAlias}
+        onClearLogs={handleClearLogs}
+      />
 
       <AuthModal
         isOpen={isAuthOpen}
         onClose={() => setIsAuthOpen(false)}
         onLoginSuccess={handleLoginSuccess}
       />
-
-      {/* // <Intro /> */}
     </>
   );
 }
