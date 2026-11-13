@@ -31,17 +31,17 @@ function colorForUser(name: string): string {
 
 export function CodeEditor({ lang, code, setCode, roomId, userName }: Props) {
   const [theme, setTheme] = useState('vs-dark');
+  const [dbg, setDbg] = useState('');
   const [editorInstance, setEditorInstance] =
     useState<editor.IStandaloneCodeEditor | null>(null);
   const setCodeRef = useRef(setCode);
   const userNameRef = useRef(userName);
   const awarenessRef = useRef<Awareness | null>(null);
-  const initialCodeRef = useRef(code);
+  const initialCodeRef = useRef(code.replace(/\r/g, ''));
 
   useEffect(() => { setCodeRef.current = setCode; }, [setCode]);
   useEffect(() => { userNameRef.current = userName; }, [userName]);
 
-  // FIX: Windows e Monaco default CRLF thake, Yjs e LF. LF force korlam.
   const handleEditorMount: OnMount = (instance, monaco) => {
     instance.getModel()?.setEOL(monaco.editor.EndOfLineSequence.LF);
     setEditorInstance(instance);
@@ -52,8 +52,7 @@ export function CodeEditor({ lang, code, setCode, roomId, userName }: Props) {
     const model = editorInstance.getModel();
     if (!model) return;
 
-    // FIX: binding bananor age abar LF (0 = LF)
-    model.setEOL(0);
+    model.setEOL(0); // 0 = LF
 
     const ydoc = new Y.Doc();
     const awareness = new Awareness(ydoc);
@@ -80,11 +79,34 @@ export function CodeEditor({ lang, code, setCode, roomId, userName }: Props) {
       awareness
     );
 
+    // Force LF AFTER the binding, because the binding's setValue can reset
+    // EOL to CRLF on Windows. The guard re-forces LF if it ever flips back.
+    model.setEOL(0);
+    const eolGuard = model.onDidChangeContent(() => {
+      if (model.getEOL() !== '\n') model.setEOL(0);
+    });
+
     const publishReactValue = () => {
       setCodeRef.current(sharedText.toString());
     };
     sharedText.observe(publishReactValue);
     publishReactValue();
+
+    // Debug line: remove once everything works.
+    const hash = (s: string) => {
+      let x = 0;
+      for (let i = 0; i < s.length; i += 1) x = (x * 31 + s.charCodeAt(i)) | 0;
+      return x;
+    };
+    const dbgTimer = setInterval(() => {
+      const y = sharedText.toString();
+      const m = model.getValue();
+      setDbg(
+        `os=${navigator.platform} eol=${model.getEOL() === '\n' ? 'LF' : 'CRLF'} ` +
+        `yjs=${y.length}ch #${hash(y)} hasCR=${y.includes('\r')} | ` +
+        `editor=${m.length}ch #${hash(m)}`
+      );
+    }, 1000);
 
     const styleElement = document.createElement('style');
     styleElement.dataset.collabRoom = roomId;
@@ -136,8 +158,10 @@ export function CodeEditor({ lang, code, setCode, roomId, userName }: Props) {
 
     return () => {
       awarenessRef.current = null;
+      clearInterval(dbgTimer);
       awareness.off('change', updateRemoteCursorStyles);
       sharedText.unobserve(publishReactValue);
+      eolGuard.dispose();
       binding.destroy();
       provider.destroy();
       styleElement.remove();
@@ -173,6 +197,7 @@ export function CodeEditor({ lang, code, setCode, roomId, userName }: Props) {
           <option value="light">Light</option>
         </select>
       </div>
+      <div style={{ color: '#a6e3a1', fontSize: 12, marginBottom: 6 }}>{dbg}</div>
       <Editor
         height="65vh"
         language={lang}
