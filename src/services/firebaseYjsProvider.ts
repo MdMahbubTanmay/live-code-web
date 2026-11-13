@@ -1,4 +1,3 @@
-
 import * as Y from 'yjs';
 import {
   Awareness,
@@ -6,7 +5,6 @@ import {
   encodeAwarenessUpdate,
   removeAwarenessStates,
 } from 'y-protocols/awareness';
-
 import {
   child,
   get,
@@ -23,7 +21,6 @@ import {
   type DatabaseReference,
   type Unsubscribe,
 } from 'firebase/database';
-
 import { db } from './firebase';
 
 const REMOTE_ORIGIN = 'firebase-yjs-remote';
@@ -31,24 +28,18 @@ const REMOTE_ORIGIN = 'firebase-yjs-remote';
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = '';
   const chunkSize = 0x8000;
-
   for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(
-      ...bytes.subarray(i, i + chunkSize)
-    );
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
   }
-
   return btoa(binary);
 }
 
 function base64ToBytes(value: string): Uint8Array {
   const binary = atob(value);
   const bytes = new Uint8Array(binary.length);
-
   for (let i = 0; i < binary.length; i += 1) {
     bytes[i] = binary.charCodeAt(i);
   }
-
   return bytes;
 }
 
@@ -59,9 +50,7 @@ type ProviderOptions = {
   initialCode: string;
 };
 
-type AwarenessRecord = {
-  update?: string;
-};
+type AwarenessRecord = { update?: string };
 
 export class FirebaseYjsProvider {
   readonly doc: Y.Doc;
@@ -73,7 +62,6 @@ export class FirebaseYjsProvider {
   private readonly awarenessRef: DatabaseReference;
   private readonly ownAwarenessRef: DatabaseReference;
   private readonly codeRef: DatabaseReference;
-
   private readonly clientKey: string;
 
   private updateListeners: Unsubscribe[] = [];
@@ -88,23 +76,13 @@ export class FirebaseYjsProvider {
   private codeMirrorTimer: ReturnType<typeof setTimeout> | null = null;
 
   private pendingUpdates: Uint8Array[] = [];
-
   private destroyed = false;
   private documentInitialized = false;
-
   private resolveSynced!: () => void;
 
-  private readonly onDocUpdate: (
-    update: Uint8Array,
-    origin: unknown
-  ) => void;
-
+  private readonly onDocUpdate: (update: Uint8Array, origin: unknown) => void;
   private readonly onAwarenessUpdate: (
-    changes: {
-      added: number[];
-      updated: number[];
-      removed: number[];
-    },
+    changes: { added: number[]; updated: number[]; removed: number[] },
     origin: unknown
   ) => void;
 
@@ -113,89 +91,46 @@ export class FirebaseYjsProvider {
     this.doc = options.doc;
     this.awareness = options.awareness;
 
-    const collaborationRef = ref(
-      db,
-      `rooms/${this.roomId}/collaboration`
-    );
-
+    const collaborationRef = ref(db, `rooms/${this.roomId}/collaboration`);
     this.updatesRef = child(collaborationRef, 'updates');
     this.awarenessRef = child(collaborationRef, 'awareness');
-
-    // Legacy room code child, maintained as a synchronized mirror.
     this.codeRef = ref(db, `rooms/${this.roomId}/code`);
-
     this.clientKey = String(this.doc.clientID);
-
-    this.ownAwarenessRef = child(
-      this.awarenessRef,
-      this.clientKey
-    );
+    this.ownAwarenessRef = child(this.awarenessRef, this.clientKey);
 
     this.synced = new Promise<void>((resolve) => {
       this.resolveSynced = resolve;
     });
 
-    // Receive existing and future Yjs document updates.
-    const receiveDocumentUpdate = (snapshot: {
-      val: () => unknown;
-    }) => {
+    const receiveDocumentUpdate = (snapshot: { val: () => unknown }) => {
       if (this.destroyed) return;
-
-      const record = snapshot.val() as {
-        update?: string;
-      } | null;
-
+      const record = snapshot.val() as { update?: string } | null;
       if (!record?.update) return;
-
       try {
-        Y.applyUpdate(
-          this.doc,
-          base64ToBytes(record.update),
-          REMOTE_ORIGIN
-        );
-
-        // Keep the legacy Firebase code child synchronized
-        // when another participant edits the document.
+        Y.applyUpdate(this.doc, base64ToBytes(record.update), REMOTE_ORIGIN);
         this.scheduleCodeMirror();
-
       } catch (error) {
-        console.error(
-          '[collaboration] Could not apply remote update:',
-          error
-        );
+        console.error('[collaboration] Could not apply remote update:', error);
       }
     };
 
     this.updateListeners.push(
-      onChildAdded(
-        this.updatesRef,
-        receiveDocumentUpdate
-      ),
-
+      onChildAdded(this.updatesRef, receiveDocumentUpdate),
       onValue(this.updatesRef, () => {
         this.resolveSyncedOnce();
       })
     );
 
-    // Receive remote cursor and selection awareness.
     const receiveAwareness = (snapshot: {
       key: string | null;
       val: () => unknown;
     }) => {
       if (this.destroyed) return;
-
       const clientId = Number(snapshot.key);
-
       const record = snapshot.val() as AwarenessRecord | null;
-
-      if (
-        !Number.isSafeInteger(clientId) ||
-        clientId < 0 ||
-        !record?.update
-      ) {
+      if (!Number.isSafeInteger(clientId) || clientId < 0 || !record?.update) {
         return;
       }
-
       try {
         applyAwarenessUpdate(
           this.awareness,
@@ -203,92 +138,48 @@ export class FirebaseYjsProvider {
           REMOTE_ORIGIN
         );
       } catch (error) {
-        console.error(
-          '[collaboration] Could not apply remote cursor:',
-          error
-        );
+        console.error('[collaboration] Could not apply remote cursor:', error);
       }
     };
 
-    const removeAwareness = (snapshot: {
-      key: string | null;
-    }) => {
+    const removeAwareness = (snapshot: { key: string | null }) => {
       const clientId = Number(snapshot.key);
-
       if (
         !this.destroyed &&
         Number.isSafeInteger(clientId) &&
         clientId >= 0 &&
         clientId !== this.doc.clientID
       ) {
-        removeAwarenessStates(
-          this.awareness,
-          [clientId],
-          REMOTE_ORIGIN
-        );
+        removeAwarenessStates(this.awareness, [clientId], REMOTE_ORIGIN);
       }
     };
 
     this.awarenessListeners.push(
-      onChildAdded(
-        this.awarenessRef,
-        receiveAwareness
-      ),
-
-      onChildChanged(
-        this.awarenessRef,
-        receiveAwareness
-      ),
-
-      onChildRemoved(
-        this.awarenessRef,
-        removeAwareness
-      )
+      onChildAdded(this.awarenessRef, receiveAwareness),
+      onChildChanged(this.awarenessRef, receiveAwareness),
+      onChildRemoved(this.awarenessRef, removeAwareness)
     );
 
-    // Handle local Yjs document updates.
     this.onDocUpdate = (update, origin) => {
-      if (
-        this.destroyed ||
-        origin === REMOTE_ORIGIN
-      ) {
-        return;
-      }
-
+      if (this.destroyed || origin === REMOTE_ORIGIN) return;
       this.pendingUpdates.push(update);
-
-      // Update the legacy code child after a short debounce.
       this.scheduleCodeMirror();
-
       if (this.updateFlushTimer) return;
-
       this.updateFlushTimer = setTimeout(() => {
         this.updateFlushTimer = null;
         void this.flushDocumentUpdates();
       }, 20);
     };
 
-    // Handle local awareness updates.
     this.onAwarenessUpdate = (changes, origin) => {
-      if (
-        this.destroyed ||
-        origin === REMOTE_ORIGIN
-      ) {
-        return;
-      }
-
+      if (this.destroyed || origin === REMOTE_ORIGIN) return;
       const changed = [
         ...changes.added,
         ...changes.updated,
         ...changes.removed,
       ];
-
       if (!changed.includes(this.doc.clientID)) return;
-
-      if (this.awarenessFlushTimer) {
-        clearTimeout(this.awarenessFlushTimer);
-      }
-
+      if (this.awarenessFlushTimer) clearTimeout(this.awarenessFlushTimer);
       this.awarenessFlushTimer = setTimeout(() => {
         this.awarenessFlushTimer = null;
         void this.flushAwareness();
@@ -298,17 +189,11 @@ export class FirebaseYjsProvider {
     this.doc.on('update', this.onDocUpdate);
     this.awareness.on('update', this.onAwarenessUpdate);
 
-    // Publish initial user awareness state.
     const localState = this.awareness.getLocalState();
-
     if (localState) {
-      this.awareness.setLocalState({
-        ...localState,
-        lastActiveAt: Date.now(),
-      });
+      this.awareness.setLocalState({ ...localState, lastActiveAt: Date.now() });
     }
 
-    // Remove awareness automatically on disconnect.
     void onDisconnect(this.ownAwarenessRef)
       .remove()
       .catch((error) => {
@@ -318,15 +203,10 @@ export class FirebaseYjsProvider {
         );
       });
 
-    // Keep user presence alive.
     this.heartbeat = setInterval(() => {
       const state = this.awareness.getLocalState();
-
       if (state) {
-        this.awareness.setLocalState({
-          ...state,
-          lastActiveAt: Date.now(),
-        });
+        this.awareness.setLocalState({ ...state, lastActiveAt: Date.now() });
       }
     }, 12_000);
 
@@ -336,172 +216,100 @@ export class FirebaseYjsProvider {
   private resolveSyncedOnce(): void {
     if (this.resolveSynced) {
       const resolve = this.resolveSynced;
-
       this.resolveSynced = () => {};
-
       resolve();
     }
   }
 
-  // Debounced synchronization of Yjs text to legacy Firebase code child.
   private scheduleCodeMirror(): void {
-    if (
-      this.destroyed ||
-      !this.documentInitialized
-    ) {
-      return;
-    }
-
-    if (this.codeMirrorTimer) {
-      clearTimeout(this.codeMirrorTimer);
-    }
+    if (this.destroyed || !this.documentInitialized) return;
+    if (this.codeMirrorTimer) clearTimeout(this.codeMirrorTimer);
 
     this.codeMirrorTimer = setTimeout(async () => {
       this.codeMirrorTimer = null;
-
       if (this.destroyed) return;
-
-      const latestCode = this.doc
-        .getText('code')
-        .toString();
-
+      const latestCode = this.doc.getText('code').toString();
       try {
         await set(this.codeRef, latestCode);
       } catch (error) {
-        console.error(
-          '[collaboration] Failed to mirror room code:',
-          error
-        );
+        console.error('[collaboration] Failed to mirror room code:', error);
       }
     }, 300);
   }
 
   private async flushDocumentUpdates(): Promise<void> {
-    if (
-      this.destroyed ||
-      this.pendingUpdates.length === 0
-    ) {
-      return;
-    }
+    if (this.destroyed || this.pendingUpdates.length === 0) return;
 
     const updates = this.pendingUpdates;
     this.pendingUpdates = [];
 
     try {
-      const merged =
-        updates.length === 1
-          ? updates[0]
-          : Y.mergeUpdates(updates);
-
+      const merged = updates.length === 1 ? updates[0] : Y.mergeUpdates(updates);
       const updateRef = push(this.updatesRef);
-
       await set(updateRef, {
         update: bytesToBase64(merged),
         createdAt: Date.now(),
       });
-
     } catch (error) {
-      // Preserve failed updates for the next retry.
       this.pendingUpdates.unshift(...updates);
-
-      console.error(
-        '[collaboration] Failed to save document update:',
-        error
-      );
+      console.error('[collaboration] Failed to save document update:', error);
     }
   }
 
   private async flushAwareness(): Promise<void> {
     if (this.destroyed) return;
-
     const localState = this.awareness.getLocalState();
-
     if (!localState) return;
 
     try {
-      const update = encodeAwarenessUpdate(
-        this.awareness,
-        [this.doc.clientID]
-      );
-
-      await set(this.ownAwarenessRef, {
-        update: bytesToBase64(update),
-      });
-
+      const update = encodeAwarenessUpdate(this.awareness, [this.doc.clientID]);
+      await set(this.ownAwarenessRef, { update: bytesToBase64(update) });
     } catch (error) {
-      console.error(
-        '[collaboration] Failed to publish cursor state:',
-        error
-      );
+      console.error('[collaboration] Failed to publish cursor state:', error);
     }
   }
 
-  private async waitForRoomCode(
-    initialCode: string
-  ): Promise<string> {
-    const roomRef = ref(
-      db,
-      `rooms/${this.roomId}`
-    );
-
+  private async waitForRoomCode(initialCode: string): Promise<string> {
+    const roomRef = ref(db, `rooms/${this.roomId}`);
     const existing = await get(roomRef);
 
     if (existing.exists()) {
       const code = existing.child('code').val();
-
-      return typeof code === 'string'
-        ? code
-        : initialCode;
+      return typeof code === 'string' ? code : initialCode;
     }
 
-    // Wait for App.joinRoom() to create the room.
     return new Promise<string>((resolve) => {
       this.resolveRoomWait = resolve;
 
       this.roomWaitUnsubscribe = onValue(
         roomRef,
-
         (snapshot) => {
           if (!snapshot.exists()) return;
-
           const code = snapshot.child('code').val();
-
-          const result =
-            typeof code === 'string'
-              ? code
-              : initialCode;
+          const result = typeof code === 'string' ? code : initialCode;
 
           this.roomWaitUnsubscribe?.();
           this.roomWaitUnsubscribe = null;
           this.resolveRoomWait = null;
-
           resolve(result);
         },
-
         (error) => {
-          console.error(
-            '[collaboration] Could not read room:',
-            error
-          );
-
+          console.error('[collaboration] Could not read room:', error);
           this.roomWaitUnsubscribe?.();
           this.roomWaitUnsubscribe = null;
           this.resolveRoomWait = null;
-
           resolve(initialCode);
         }
       );
     });
   }
 
-  private async initializeDocument(
-    initialCode: string
-  ): Promise<void> {
+  // FIX: existing Yjs updates thakle legacy code diye kokhono seed korbo na
+  private async initializeDocument(initialCode: string): Promise<void> {
     try {
       await this.synced;
       if (this.destroyed) return;
 
-      // Already Yjs data thakle legacy code diye kokhono seed korbo na
       const updatesSnap = await get(this.updatesRef);
       const hasUpdates = updatesSnap.exists();
 
@@ -531,7 +339,6 @@ export class FirebaseYjsProvider {
         }
       }
 
-      // Seed/sync sesh hole tobei mirror chalu
       this.documentInitialized = true;
       this.scheduleCodeMirror();
     } catch (error) {
@@ -542,88 +349,51 @@ export class FirebaseYjsProvider {
   destroy(): void {
     if (this.destroyed) return;
 
-    // Best-effort final code mirror before destroying.
     if (this.documentInitialized) {
-      const finalCode = this.doc
-        .getText('code')
-        .toString();
-
+      const finalCode = this.doc.getText('code').toString();
       void set(this.codeRef, finalCode).catch((error) => {
-        console.error(
-          '[collaboration] Final code mirror failed:',
-          error
-        );
+        console.error('[collaboration] Final code mirror failed:', error);
       });
     }
 
     this.destroyed = true;
 
-    if (this.heartbeat) {
-      clearInterval(this.heartbeat);
-    }
-
-    if (this.updateFlushTimer) {
-      clearTimeout(this.updateFlushTimer);
-    }
-
-    if (this.awarenessFlushTimer) {
-      clearTimeout(this.awarenessFlushTimer);
-    }
-
+    if (this.heartbeat) clearInterval(this.heartbeat);
+    if (this.updateFlushTimer) clearTimeout(this.updateFlushTimer);
+    if (this.awarenessFlushTimer) clearTimeout(this.awarenessFlushTimer);
     if (this.codeMirrorTimer) {
       clearTimeout(this.codeMirrorTimer);
       this.codeMirrorTimer = null;
     }
 
     this.doc.off('update', this.onDocUpdate);
+    this.awareness.off('update', this.onAwarenessUpdate);
 
-    this.awareness.off(
-      'update',
-      this.onAwarenessUpdate
-    );
-
-    this.updateListeners.forEach((unsubscribe) => {
-      unsubscribe();
-    });
-
-    this.awarenessListeners.forEach((unsubscribe) => {
-      unsubscribe();
-    });
+    this.updateListeners.forEach((unsubscribe) => unsubscribe());
+    this.awarenessListeners.forEach((unsubscribe) => unsubscribe());
 
     this.roomWaitUnsubscribe?.();
     this.roomWaitUnsubscribe = null;
-
     this.resolveRoomWait?.('');
     this.resolveRoomWait = null;
 
-    // Final pending Yjs update flush.
     if (this.pendingUpdates.length > 0) {
       const updates = this.pendingUpdates;
       this.pendingUpdates = [];
-
-      const merged =
-        updates.length === 1
-          ? updates[0]
-          : Y.mergeUpdates(updates);
+      const merged = updates.length === 1 ? updates[0] : Y.mergeUpdates(updates);
 
       void set(push(this.updatesRef), {
         update: bytesToBase64(merged),
         createdAt: Date.now(),
       }).catch((error) => {
-        console.error(
-          '[collaboration] Final update flush failed:',
-          error
-        );
+        console.error('[collaboration] Final update flush failed:', error);
       });
     }
 
     this.awareness.setLocalState(null);
 
     void remove(this.ownAwarenessRef).catch((error) => {
-      console.error(
-        '[collaboration] Presence cleanup failed:',
-        error
-      );
+      console.error('[collaboration] Presence cleanup failed:', error);
     });
   }
 }

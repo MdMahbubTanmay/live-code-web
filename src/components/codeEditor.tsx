@@ -41,7 +41,9 @@ export function CodeEditor({ lang, code, setCode, roomId, userName }: Props) {
   useEffect(() => { setCodeRef.current = setCode; }, [setCode]);
   useEffect(() => { userNameRef.current = userName; }, [userName]);
 
-  const handleEditorMount: OnMount = (instance) => {
+  // FIX: Windows e Monaco default CRLF thake, Yjs e LF. LF force korlam.
+  const handleEditorMount: OnMount = (instance, monaco) => {
+    instance.getModel()?.setEOL(monaco.editor.EndOfLineSequence.LF);
     setEditorInstance(instance);
   };
 
@@ -49,6 +51,9 @@ export function CodeEditor({ lang, code, setCode, roomId, userName }: Props) {
     if (!editorInstance || !roomId) return;
     const model = editorInstance.getModel();
     if (!model) return;
+
+    // FIX: binding bananor age abar LF (0 = LF)
+    model.setEOL(0);
 
     const ydoc = new Y.Doc();
     const awareness = new Awareness(ydoc);
@@ -68,8 +73,6 @@ export function CodeEditor({ lang, code, setCode, roomId, userName }: Props) {
       initialCode: initialCodeRef.current,
     });
 
-    // y-monaco applies CRDT text deltas to Monaco's model, rather than
-    // replacing the whole editor value. Local focus and cursor are preserved.
     const binding = new MonacoBinding(
       sharedText,
       model,
@@ -83,8 +86,6 @@ export function CodeEditor({ lang, code, setCode, roomId, userName }: Props) {
     sharedText.observe(publishReactValue);
     publishReactValue();
 
-    // y-monaco supplies remote cursor/selection decorations. These styles add
-    // readable per-user colors and a small alias label above each remote caret.
     const styleElement = document.createElement('style');
     styleElement.dataset.collabRoom = roomId;
     document.head.appendChild(styleElement);
@@ -145,7 +146,6 @@ export function CodeEditor({ lang, code, setCode, roomId, userName }: Props) {
     };
   }, [editorInstance, roomId]);
 
-  // Alias updates are awareness-only; they do not recreate the Yjs document.
   useEffect(() => {
     const awareness = awarenessRef.current;
     if (!awareness) return;
