@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import './App.css';
 import { MainUI } from './components/main_ui';
-import { startSessionTracking, listenToSessionHistory } from './services/sessionHistory';
+import { startSessionTracking, listenToSessionHistory, clearSessionHistory, updateSessionHistoryAliasesByIp } from './services/sessionHistory';
 import type { SessionRecord } from './services/sessionHistory';
 import { TopBar } from './components/topbar';
 import { AuthModal } from './components/AuthModal';
@@ -169,15 +169,17 @@ function App() {
 
   const handleClearLogs = async () => {
     if (!isMentor) return;
-    if (!window.confirm('Are you sure you want to clear all connected users logs?')) return;
+    if (!window.confirm('Are you sure you want to clear all active-user logs AND room session history? This cannot be undone.')) return;
 
     try {
-      await clearRoomLogs(roomId);
+      // Clear both the original active-user logs and the separate session-history records.
+      await Promise.all([clearRoomLogs(roomId), clearSessionHistory(roomId)]);
       setConnectedUsers({});
-      alert('All logs cleared successfully!');
+      setSessionHistory({});
+      alert('Active user logs and room session history cleared successfully!');
     } catch (error) {
       console.error('Failed to clear logs:', error);
-      alert('Failed to clear logs. Please try again.');
+      alert('Failed to clear logs/history. Please try again.');
     }
   };
 
@@ -235,7 +237,10 @@ function App() {
         onSetPassword={(pass) => setRoomPassword(roomId, pass)}
         connectedUsers={connectedUsers}
         sessionHistory={sessionHistory}
-        onUpdateAlias={(ip, newAlias) => updateUserAlias(roomId, ip, newAlias)}
+        onUpdateAlias={async (ip, newAlias) => {
+          await updateUserAlias(roomId, ip, newAlias);
+          await updateSessionHistoryAliasesByIp(roomId, ip, newAlias);
+        }}
         myAlias={myAlias}
         setMyAlias={setMyAlias}
         onClearLogs={handleClearLogs}

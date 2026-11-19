@@ -22,7 +22,7 @@ export const Intro = () => {
         >
           GitHub
         </a>
-{/* 
+ 
         <a
           href="https://www.facebook.com/MdMahbubTanmay"
           target="_blank"
@@ -37,7 +37,7 @@ export const Intro = () => {
           rel="noopener noreferrer"
         >
           LinkedIn
-        </a> */}
+        </a> 
       </div>
     </div>
   );

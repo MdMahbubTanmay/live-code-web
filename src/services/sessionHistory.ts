@@ -87,14 +87,30 @@ export async function startSessionTracking(
   await onDisconnect(presenceRef).remove();
 
   let stopped = false;
+  let historyCleared = false;
   const heartbeat = window.setInterval(() => {
+    if (historyCleared || stopped) return;
     const stamp = Date.now();
-    update(sessionRef, { lastSeen: stamp, status: 'online' }).catch(() => {});
+    // Do not recreate a session record after the mentor has cleared history.
+    get(sessionRef).then((snap) => {
+      if (!historyCleared && snap.exists()) update(sessionRef, { lastSeen: stamp, status: 'online' }).catch(() => {});
+    }).catch(() => {});
   }, 15_000);
+
+  // If the mentor deletes history while this guest is connected, cancel the
+  // registered onDisconnect write so it cannot recreate a deleted entry later.
+  const unsubscribeHistoryWatch = onValue(sessionRef, (snap) => {
+    if (!snap.exists() && !stopped) {
+      historyCleared = true;
+      window.clearInterval(heartbeat);
+      onDisconnect(sessionRef).cancel().catch(() => {});
+    }
+  });
 
   const updateAlias = async (newAlias: string) => {
     const cleanAlias = newAlias || 'Guest';
-    await update(sessionRef, { alias: cleanAlias });
+    const historySnap = historyCleared ? null : await get(sessionRef);
+    if (historySnap?.exists()) await update(sessionRef, { alias: cleanAlias });
     const snap = await get(presenceRef);
     if (snap.exists() && snap.val()?.sessionId === sessionId) {
       await update(presenceRef, { alias: cleanAlias });
@@ -105,16 +121,22 @@ export async function startSessionTracking(
     if (stopped) return;
     stopped = true;
     window.clearInterval(heartbeat);
+    unsubscribeHistoryWatch();
     const leftAt = Date.now();
     try {
       await onDisconnect(sessionRef).cancel();
       await onDisconnect(presenceRef).cancel();
-      await update(sessionRef, {
-        status: 'left',
-        leftAt,
-        lastSeen: leftAt,
-        durationMs: Math.max(0, leftAt - now),
-      });
+      // If the mentor cleared history while this user was connected, don't
+      // recreate the deleted record on exit.
+      const historySnap = historyCleared ? null : await get(sessionRef);
+      if (historySnap?.exists()) {
+        await update(sessionRef, {
+          status: 'left',
+          leftAt,
+          lastSeen: leftAt,
+          durationMs: Math.max(0, leftAt - now),
+        });
+      }
       const snap = await get(presenceRef);
       if (snap.exists() && snap.val()?.sessionId === sessionId) {
         await remove(presenceRef);
@@ -140,4 +162,22 @@ export function listenToSessionHistory(
 export function clearSessionHistory(roomId: string): Promise<void> {
   if (!roomId) return Promise.resolve();
   return remove(ref(db, historyPath(roomId)));
+}
+
+
+export async function updateSessionHistoryAliasesByIp(
+  roomId: string,
+  userIp: string,
+  newAlias: string,
+): Promise<void> {
+  if (!roomId || !userIp) return;
+  const snap = await get(ref(db, historyPath(roomId)));
+  if (!snap.exists()) return;
+  const records = snap.val() as Record<string, SessionRecord>;
+  const cleanAlias = newAlias.trim() || 'Guest';
+  const changes: Record<string, unknown> = {};
+  for (const [sessionId, record] of Object.entries(records)) {
+    if (record?.ip === userIp) changes[`${sessionId}/alias`] = cleanAlias;
+  }
+  if (Object.keys(changes).length) await update(ref(db, historyPath(roomId)), changes);
 }

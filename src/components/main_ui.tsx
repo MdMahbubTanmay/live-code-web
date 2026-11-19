@@ -79,7 +79,7 @@ export const MainUI = ({
       pdf.text(`Exported: ${new Date().toLocaleString()}`, 14, 29);
       pdf.text(`Total sessions: ${sessions.length}`, 14, 35);
 
-      const headers = ['Student / Alias', 'IP', 'Joined', 'Left', 'Duration', 'Status'];
+      const headers = ['Student / Alias', 'UID', 'Joined', 'Left', 'Duration', 'Status'];
       const colX = [14, 64, 104, 154, 204, 244];
       let y = 44;
       pdf.setFont('helvetica', 'bold');
@@ -96,7 +96,7 @@ export const MainUI = ({
           (session.alias || 'Guest').slice(0, 22),
           (session.ip || '').slice(0, 18),
           formatDateTime(session.joinedAt),
-          leftAt ? formatDateTime(leftAt) : session.status === 'online' ? 'Still online' : 'Approx. last seen',
+          leftAt ? formatDateTime(leftAt) : session.status === 'online' ? 'Still online' : `~${formatTime(session.lastSeen)}`,
           formatDuration(duration),
           session.status,
         ];
@@ -162,7 +162,7 @@ export const MainUI = ({
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
-              <h5 style={{ margin: 0, color: '#a6adc8', fontSize: '0.85rem' }}>Active Users & Logged IPs:</h5>
+              <h5 style={{ margin: 0, color: '#a6adc8', fontSize: '0.85rem' }}>Active Users & Logged UIDs:</h5>
               <button onClick={onClearLogs} style={{ background: '#f38ba8', color: '#11111b', border: 'none', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.75rem' }}>Clear Logs</button>
             </div>
 
@@ -172,7 +172,7 @@ export const MainUI = ({
               ) : Object.entries(connectedUsers).map(([key, user]) => (
                 <div key={key} style={{ marginBottom: '6px', paddingBottom: '4px', borderBottom: '1px solid #1e1e2e', fontSize: '0.78rem', display: 'flex', flexDirection: 'column', gap: '2px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: '#89b4fa' }}>
-                    <span>IP: {user.ip}</span><span style={{ color: '#a6adc8' }}>{formatTime(user.joinedAt)}</span>
+                    <span>UID: {user.ip}</span><span style={{ color: '#a6adc8' }}>{formatTime(user.joinedAt)}</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <span style={{ color: '#cdd6f4' }}>Alias:</span>
@@ -193,7 +193,7 @@ export const MainUI = ({
                 const duration = session.durationMs ?? (end ? end - session.joinedAt : session.status === 'online' ? clockNow - session.joinedAt : (session.lastSeen || session.joinedAt) - session.joinedAt);
                 return <div key={session.sessionId} style={{ padding: '7px 4px', borderBottom: '1px solid #313244', fontSize: '0.75rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: '5px', color: '#89b4fa' }}><strong>{session.alias || 'Guest'}</strong><span>{session.status === 'online' ? '🟢 Online' : session.status === 'disconnected' ? '⚠ Disconnected' : 'Left'}</span></div>
-                  <div style={{ color: '#a6adc8' }}>IP: {session.ip} · Joined: {formatTime(session.joinedAt)}</div>
+                  <div style={{ color: '#a6adc8' }}>UID: {session.ip} · Joined: {formatTime(session.joinedAt)}</div>
                   <div style={{ color: '#cdd6f4' }}>Left: {end ? formatTime(end) : session.status === 'online' ? '—' : `~${formatTime(session.lastSeen)}`} · Duration: {formatDuration(duration)}</div>
                 </div>;
               })}

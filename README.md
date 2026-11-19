@@ -1,17 +1,19 @@
 # Live Code Web
 
-A browser-based live coding application built with **React + TypeScript**. <br>**[visit now](https://live-code-web.vercel.app/)**
+A browser-based live coding application built with **React + TypeScript**. <br>**[<VISIT NOW>](https://livecodeweb.netlify.app/)**
 
 This project is the web adaptation of my earlier desktop app **[@MdMahbubTanmay/LiveCodeShare](https://github.com/MdMahbubTanmay/LiveCodeShare)** (Java + JavaFX), created so users can use the tool instantly from a browser without installing anything.
 
-```Minimal Ai used, F*ck vibe coders```
+
 
 ---
 ## Image Previews
 
-[![Screenshot-2026-07-22-05-47-33-087-com-android-chrome.png](https://i.postimg.cc/MK6vkjzD/Screenshot-2026-07-22-05-47-33-087-com-android-chrome.png)](https://postimg.cc/QVzX1C99)
+```Mentor Side```
+[![screenshot-20261119-230236-annotated.png](https://i.postimg.cc/sXZ0Cc06/screenshot-20261119-230236-annotated.png)](https://postimg.cc/N9Bx11tm)
 
-[![Screenshot-2026-07-22-05-49-24-543-com-android-chrome.png](https://i.postimg.cc/s2h2PYJ2/Screenshot-2026-07-22-05-49-24-543-com-android-chrome.png)](https://postimg.cc/v1GMb6kR)
+```Guest Side```
+[![screenshot-20261119-230409-annotated.png](https://i.postimg.cc/SxsdpdnW/screenshot-20261119-230409-annotated.png)](https://postimg.cc/tYKW3htT)
 
 ---
 ## How To Use
@@ -65,27 +67,12 @@ Before this, I created a desktop version in JavaFX. After that experience, I wan
 
 ## 🧰 Tech Stack
 
-- **TypeScript** – 60.1%
-- **CSS** – 37.9%
-- **HTML** – 2.0%
+- **TypeScript** 
+- **CSS** 
+- **HTML** 
 - **React**
 - **Vite**
 
----
-
-## 📂 Repository Structure (High-Level)
-
-```text
-live-code-web/
-├── public/               # Static assets
-├── src/                  # Main React + TypeScript application code
-├── index.html            # Root HTML file
-├── package.json          # Project scripts and dependencies
-├── vite.config.ts        # Vite configuration
-├── tsconfig.json         # Base TypeScript config
-├── tsconfig.app.json     # App TypeScript config
-└── tsconfig.node.json    # Node/tooling TypeScript config
-```
 
 ---
 
