@@ -2,6 +2,8 @@
 import { useState, useEffect, useRef } from 'react';
 import './App.css';
 import { MainUI } from './components/main_ui';
+import { startSessionTracking, listenToSessionHistory } from './services/sessionHistory';
+import type { SessionRecord } from './services/sessionHistory';
 import { TopBar } from './components/topbar';
 import { AuthModal } from './components/AuthModal';
 import { executeCode } from './api/codeRunner';
@@ -36,7 +38,9 @@ function App() {
   const [inputVal, setInputVal] = useState<string>('');
   const [outputVal, setOutputVal] = useState<string>('');
   const [roomPassword, setRoomPasswordState] = useState<string>('');
-  const [connectedUsers, setConnectedUsers] = useState<Record<string, { ip: string; alias: string }>>({});
+  const [connectedUsers, setConnectedUsers] = useState<Record<string, { ip: string; alias: string; joinedAt?: number }>>({});
+  const [sessionHistory, setSessionHistory] = useState<Record<string, SessionRecord>>({});
+  const sessionTrackerRef = useRef<Awaited<ReturnType<typeof startSessionTracking>>>(null);
   const [isAuthOpen, setIsAuthOpen] = useState<boolean>(false);
 
   // alias ref: alias type korle effect restart hobe na
@@ -58,26 +62,55 @@ function App() {
       });
   }, [username]);
 
-  // Room join + listen (myAlias dependency nei)
+  // Existing room join/listener preserved; session tracking starts only after joinRoom completes.
   useEffect(() => {
     if (!roomId) return;
+    let cancelled = false;
+    let tracker: Awaited<ReturnType<typeof startSessionTracking>> = null;
 
     const currentAlias = username ? username : aliasRef.current;
-
-    joinRoom(roomId, userIp, currentAlias, DEFAULT_CODE).catch((err) =>
-      console.error('Join error:', err)
-    );
+    joinRoom(roomId, userIp, currentAlias, DEFAULT_CODE)
+      .then(async () => {
+        // The mentor's own room isn't counted as a visitor session.
+        if (cancelled || (username && username === roomId)) return;
+        const created = await startSessionTracking(roomId, userIp, currentAlias);
+        if (cancelled) {
+          created?.stop().catch(() => {});
+          return;
+        }
+        tracker = created;
+        sessionTrackerRef.current = created;
+        if (created) created.updateAlias(username || aliasRef.current).catch(() => {});
+      })
+      .catch((err) => console.error('Join/session tracking error:', err));
 
     const unsubscribe = listenToRoomChanges(roomId, (roomData) => {
-      // code ekhane set hobe na, Yjs (codeEditor) eta handle kore
+      // Code is handled by Yjs (codeEditor); preserve existing synced fields.
       if (roomData.input !== undefined) setInputVal(roomData.input);
       if (roomData.output !== undefined) setOutputVal(roomData.output);
       if (roomData.password !== undefined) setRoomPasswordState(roomData.password);
       if (roomData.connectedUsers) setConnectedUsers(roomData.connectedUsers);
     });
+    const unsubscribeHistory = listenToSessionHistory(roomId, setSessionHistory);
 
-    return () => unsubscribe();
+    return () => {
+      cancelled = true;
+      unsubscribe();
+      unsubscribeHistory();
+      if (tracker) {
+        tracker.stop().catch(() => {});
+        if (sessionTrackerRef.current?.sessionId === tracker.sessionId) {
+          sessionTrackerRef.current = null;
+        }
+      }
+    };
   }, [roomId, userIp, username]);
+
+  // Keep the current session's display alias in its history record.
+  useEffect(() => {
+    const tracker = sessionTrackerRef.current;
+    if (tracker) tracker.updateAlias(username || myAlias).catch(() => {});
+  }, [myAlias, username]);
 
   // Alias change hole shudhu alias update hobe
   useEffect(() => {
@@ -201,6 +234,7 @@ function App() {
         roomPassword={roomPassword}
         onSetPassword={(pass) => setRoomPassword(roomId, pass)}
         connectedUsers={connectedUsers}
+        sessionHistory={sessionHistory}
         onUpdateAlias={(ip, newAlias) => updateUserAlias(roomId, ip, newAlias)}
         myAlias={myAlias}
         setMyAlias={setMyAlias}
